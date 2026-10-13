@@ -1,0 +1,10 @@
+# 请将下面的 your-domain.com 替换为解析到 101.43.53.182 的真实域名
+# 例如：hub.yourdomain.com
+your-domain.com {
+    # 自动反向代理到 agent-hub 容器的 3000 端口
+    # Caddy 原生支持 WebSocket，会自动处理 Upgrade 头和流式传输
+    reverse_proxy agent-hub:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+}

@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  # 主调度中心与 Web 聊天服务
+  agent-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-hub-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - AGENT_DEFAULT_TOKEN=${AGENT_DEFAULT_TOKEN}
+      - ACCESS_PASSWORD=${ACCESS_PASSWORD}
+      - SESSION_SECRET=${SESSION_SECRET}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # （可选）自动化 HTTPS / WSS 反向代理网关 (Caddy: 自动申请免费 SSL 证书并支持 WebSocket)
+  # 如果你服务器上已经有 Nginx 占用了 80/443，可以把这个 caddy 部分注释掉，直接用你的 Nginx 代理 3000 端口
+  caddy:
+    image: caddy:alpine
+    container_name: agent-hub-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - agent-hub
+
+volumes:
+  caddy_data:
+  caddy_config:
