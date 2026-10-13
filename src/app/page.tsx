@@ -13,6 +13,7 @@ import {
   Sparkles,
   Wifi,
   WifiOff,
+  LogOut,
 } from "lucide-react";
 
 interface Agent {
@@ -281,10 +282,24 @@ export default function ChatHubPage() {
             </span>
           </div>
 
-          <div className="text-xs text-neutral-400 flex items-center gap-2">
-            <span>支持指令：</span>
-            <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">@muse</code>
-            <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">@dot</code>
+          <div className="flex items-center gap-4">
+            <div className="text-xs text-neutral-400 hidden sm:flex items-center gap-2">
+              <span>支持指令：</span>
+              <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">@muse</code>
+              <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">@dot</code>
+            </div>
+
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.href = "/login";
+              }}
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 flex items-center gap-1.5 transition-colors"
+              title="锁定并退出"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>锁定</span>
+            </button>
           </div>
         </header>
 
