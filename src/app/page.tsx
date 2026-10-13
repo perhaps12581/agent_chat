@@ -409,21 +409,29 @@ export default function ChatHubPage() {
         {/* 底部输入框 */}
         <div className="p-4 border-t border-neutral-800 bg-neutral-900/30">
           <div className="max-w-3xl mx-auto space-y-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setInputValue((prev) => `@muse ${prev}`)}
-                className="text-xs px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 flex items-center gap-1 transition-colors"
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" /> @muse
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputValue((prev) => `@dot ${prev}`)}
-                className="text-xs px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 flex items-center gap-1 transition-colors"
-              >
-                <Sparkles className="w-3 h-3 text-blue-400" /> @dot
-              </button>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              <span className="text-xs text-neutral-500 mr-1 flex items-center gap-1 flex-shrink-0">
+                <Sparkles className="w-3 h-3 text-indigo-400" /> 快捷指派:
+              </span>
+              {agents.map((ag) => (
+                <button
+                  key={ag.id}
+                  type="button"
+                  onClick={() => setInputValue((prev) => `@${ag.id} ${prev}`)}
+                  className={`text-xs px-2.5 py-1 rounded-full border text-neutral-300 flex items-center gap-1.5 transition-colors flex-shrink-0 ${
+                    ag.isOnline
+                      ? "bg-neutral-800/80 border-emerald-500/30 hover:bg-neutral-700"
+                      : "bg-neutral-900 border-neutral-800 hover:bg-neutral-800 text-neutral-400"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      ag.isOnline ? "bg-emerald-400 shadow-sm shadow-emerald-500/50" : "bg-neutral-500"
+                    }`}
+                  />
+                  <span>@{ag.id}</span>
+                </button>
+              ))}
             </div>
 
             <form onSubmit={handleSendMessage} className="flex gap-2">

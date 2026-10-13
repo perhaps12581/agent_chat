@@ -3,31 +3,28 @@ import { prisma } from "./db";
 export async function seedAgents() {
   const token = process.env.AGENT_DEFAULT_TOKEN || "agtk_live_muse_secret_token_20261013";
 
-  // 预置 muse
-  await prisma.agent.upsert({
-    where: { id: "muse" },
-    update: { token },
-    create: {
-      id: "muse",
-      name: "Muse 助手",
-      token,
-      status: "OFFLINE",
-      capabilities: ["step_progress", "artifacts_meta"],
-    },
-  });
+  const defaultAgents = [
+    { id: "muse", name: "Muse 主节点", token },
+    { id: "muse1", name: "Muse 1号机", token },
+    { id: "muse2", name: "Muse 2号机", token },
+    { id: "muse3", name: "Muse 3号机", token },
+    { id: "muse4", name: "Muse 4号机", token },
+    { id: "dot", name: "Dot 助手", token },
+  ];
 
-  // 预置 dot
-  await prisma.agent.upsert({
-    where: { id: "dot" },
-    update: { token },
-    create: {
-      id: "dot",
-      name: "Dot 助手",
-      token,
-      status: "OFFLINE",
-      capabilities: ["step_progress"],
-    },
-  });
+  for (const ag of defaultAgents) {
+    await prisma.agent.upsert({
+      where: { id: ag.id },
+      update: { token: ag.token },
+      create: {
+        id: ag.id,
+        name: ag.name,
+        token: ag.token,
+        status: "OFFLINE",
+        capabilities: ["step_progress", "artifacts_meta"],
+      },
+    });
+  }
 
   // 预置一个默认的群聊会话
   const existingConv = await prisma.conversation.findFirst({
