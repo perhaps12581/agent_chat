@@ -1,0 +1,73 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 会话/群聊表
+model Conversation {
+  id        String    @id @default(uuid())
+  title     String    @default("新会话")
+  isGroup   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+// 消息记录表
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType     String       // USER, AGENT, SYSTEM
+  senderId       String       // user_me, muse, dot
+  senderName     String       @default("")
+  content        String       @db.Text
+  taskId         String?      // 关联的任务ID
+  status         String?      // SENT, PROCESSING, DONE, FAILED
+  step           String?      // 步骤进度，如 ACCEPTED, TOOL_EXECUTION, ARTIFACT_READY
+  progress       Int?         // 进度 0-100
+  createdAt      DateTime     @default(now())
+
+  @@map("messages")
+}
+
+// Agent 注册表
+model Agent {
+  id              String   @id // muse, dot
+  name            String
+  token           String
+  status          String   @default("OFFLINE") // ONLINE, BUSY, OFFLINE
+  capabilities    Json?
+  lastHeartbeatAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("agents")
+}
+
+// 任务调度表 (映射 v1.1 协议全流程)
+model Task {
+  taskId          String   @id // 类 Snowflake/时间戳有序，如 tsk_20261013143000_xxxx
+  agentId         String   // 指派给哪个 agent，如 muse
+  conversationId  String?  // 关联的会话
+  prompt          String   @db.Text
+  payload         Json?
+  priority        Int      @default(0) // 0 普通 / 1 高优 / 2 紧急
+  status          String   @default("PENDING") // PENDING, ACCEPTED, RUNNING, COMPLETED, FAILED, CANCELLED, REJECTED
+  progress        Int?     // 进度 0-100
+  lastStep        String?  // ACCEPTED, TOOL_EXECUTION, ARTIFACT_READY 等
+  result          String?  @db.Text
+  artifacts       Json?    // 产物元数据 [{ name, mime, size, sha256 }]
+  error           Json?    // { code, message }
+  lastAckMsgId    String?  // 上行确认的 msgId
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("tasks")
+}
