@@ -1,8 +1,8 @@
 import { WebSocket } from "ws";
 
-const WS_URL = "ws://localhost:3000/ws/agent";
-const TOKEN = "agtk_live_muse_secret_token_20261013";
-const AGENT_ID = "muse";
+const WS_URL = process.env.AGENT_HUB_WS_URL || "ws://localhost:3000/ws/agent";
+const TOKEN = process.env.AGENT_HUB_TOKEN || "agtk_live_muse_secret_token_20261013";
+const AGENT_ID = process.env.AGENT_HUB_ID || "muse";
 
 console.log(`[Mock Muse] 启动测试客户端，连接目标: ${WS_URL}`);
 
@@ -27,7 +27,7 @@ ws.on("open", () => {
       pendingTaskIds: [],
     });
 
-    ws.send(payload, (err) => {
+    ws.send(payload, (err?: Error) => {
       if (err) {
         console.error(`[Mock Muse] 发送 AGENT_READY 失败:`, err);
       } else {
@@ -124,11 +124,11 @@ ws.on("message", async (data: Buffer) => {
   }
 });
 
-ws.on("close", (code, reason) => {
+ws.on("close", (code: number, reason: Buffer) => {
   console.log(`[Mock Muse] 连接关闭: code=${code}, reason=${reason.toString()}`);
   clearInterval(heartbeatTimer);
 });
 
-ws.on("error", (err) => {
+ws.on("error", (err: Error) => {
   console.error(`[Mock Muse] 套接字异常:`, err.message);
 });

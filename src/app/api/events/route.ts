@@ -1,21 +1,21 @@
 import { AgentGateway } from "@/lib/agent-gateway";
 
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   const gateway = AgentGateway.getInstance();
 
   const stream = new ReadableStream({
     start(controller) {
-      const sendEvent = (data: any) => {
+      const sendEvent = (data: unknown) => {
         try {
           const payload = `data: ${JSON.stringify(data)}\n\n`;
           controller.enqueue(new TextEncoder().encode(payload));
-        } catch (e) {}
+        } catch {
+          // 忽略发送异常
+        }
       };
 
       // 注册网关事件监听
-      const unsubscribe = gateway.onEvent((event) => {
+      const unsubscribe = gateway.onEvent((event: Record<string, unknown>) => {
         sendEvent(event);
       });
 

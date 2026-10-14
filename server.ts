@@ -1,7 +1,8 @@
-import { createServer } from "http";
+import { createServer, IncomingMessage, ServerResponse } from "http";
+import { Duplex } from "stream";
 import { parse } from "url";
 import next from "next";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { AgentGateway } from "./src/lib/agent-gateway";
 import { seedAgents } from "./src/lib/seed";
 
@@ -18,12 +19,13 @@ async function start() {
   // 1. 初始化数据库中预置的 muse 和 dot Agent
   try {
     await seedAgents();
-  } catch (err: any) {
-    console.error("Database seed warning:", err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Database seed warning:", message);
   }
 
   // 2. 创建 HTTP 基础服务器
-  const server = createServer((req, res) => {
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);
   });
@@ -34,11 +36,11 @@ async function start() {
   gateway.setupWebSocketServer(wss);
 
   // 4. 处理协议升级 (HTTP -> WSS)
-  server.on("upgrade", (req, socket, head) => {
+  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const { pathname } = parse(req.url || "");
 
     if (pathname === "/ws/agent") {
-      wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
         wss.emit("connection", ws, req);
       });
     } else {
@@ -53,7 +55,7 @@ async function start() {
   });
 }
 
-start().catch((err) => {
+start().catch((err: unknown) => {
   console.error("Failed to start server:", err);
   process.exit(1);
 });

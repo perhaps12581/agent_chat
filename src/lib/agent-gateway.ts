@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { IncomingMessage } from "http";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 
 // 消息信封通用结构 (v1.1 标准)
@@ -9,7 +10,22 @@ export interface AgentEnvelope {
   taskId?: string;
   seq?: number;
   ts?: number;
-  [key: string]: any;
+  capabilities?: string[];
+  pendingTaskIds?: string[];
+  status?: string;
+  reason?: string;
+  step?: string;
+  message?: string;
+  progress?: number;
+  result?: string;
+  artifacts?: Prisma.InputJsonValue;
+  error?: { code?: string; message?: string } | null;
+  prompt?: string;
+  isRef?: boolean;
+  payloadRefUrl?: string;
+  priority?: number;
+  payload?: unknown;
+  [key: string]: unknown;
 }
 
 interface AgentSession {
@@ -25,10 +41,10 @@ export class AgentGateway {
   // agentId -> Session 映射
   private activeSessions = new Map<string, AgentSession>();
   // 消息事件广播监听器（用于向前端推流）
-  private eventListeners = new Set<(event: any) => void>();
+  private eventListeners = new Set<(event: Record<string, unknown>) => void>();
 
   public static getInstance(): AgentGateway {
-    const globalAny = globalThis as any;
+    const globalAny = globalThis as unknown as { __agentGatewayInstance?: AgentGateway };
     if (!globalAny.__agentGatewayInstance) {
       globalAny.__agentGatewayInstance = new AgentGateway();
     }
@@ -116,8 +132,9 @@ export class AgentGateway {
         const data: AgentEnvelope = JSON.parse(text);
         session.lastHeartbeat = Date.now();
         await this.handleMessage(session, data);
-      } catch (err: any) {
-        console.error(`[Gateway] 消息解析异常:`, err.message);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[Gateway] 消息解析异常:`, message);
       }
     };
 
@@ -128,7 +145,7 @@ export class AgentGateway {
       await onMessage(msg);
     }
 
-    ws.on("close", (code, reason) => {
+    ws.on("close", (code: number, reason: Buffer) => {
       console.log(`[Gateway] Agent ${agentId} 连接断开 (code: ${code}, reason: ${reason.toString()})`);
       if (this.activeSessions.get(agentId)?.ws === ws) {
         this.activeSessions.delete(agentId);
@@ -136,7 +153,7 @@ export class AgentGateway {
       }
     });
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: Error) => {
       console.error(`[Gateway] Agent ${agentId} 套接字错误:`, err.message);
     });
   }
@@ -183,7 +200,7 @@ export class AgentGateway {
             where: { taskId },
             data: {
               status: status === "ACCEPTED" ? "ACCEPTED" : status === "REJECTED" ? "REJECTED" : "RUNNING",
-              lastStep: status,
+              lastStep: status || undefined,
             },
           });
           this.broadcastEvent({ type: "TASK_ACK", taskId, status, reason });
@@ -211,7 +228,7 @@ export class AgentGateway {
             where: { taskId },
             data: {
               status: "RUNNING",
-              lastStep: step,
+              lastStep: step || undefined,
               progress: typeof progress === "number" ? progress : undefined,
               lastAckMsgId: msgId,
             },
@@ -221,7 +238,7 @@ export class AgentGateway {
           await prisma.message.updateMany({
             where: { taskId },
             data: {
-              step,
+              step: step || undefined,
               progress: typeof progress === "number" ? progress : undefined,
               status: "PROCESSING",
             },
@@ -254,8 +271,8 @@ export class AgentGateway {
             data: {
               status: finalStatus,
               result: result || "",
-              artifacts: artifacts || null,
-              error: error || null,
+              artifacts: artifacts !== undefined ? artifacts : undefined,
+              error: error ? (error as Prisma.InputJsonValue) : undefined,
               progress: 100,
               lastAckMsgId: msgId,
             },
@@ -265,7 +282,7 @@ export class AgentGateway {
           await prisma.message.updateMany({
             where: { taskId },
             data: {
-              content: result || (error ? `[错误] ${error.message}` : "任务处理完成"),
+              content: result || (error?.message ? `[错误] ${error.message}` : "任务处理完成"),
               status: finalStatus === "COMPLETED" ? "DONE" : "FAILED",
               progress: 100,
             },
@@ -282,7 +299,7 @@ export class AgentGateway {
   }
 
   // 派发任务给指定的 Agent
-  public async dispatchTask(agentId: string, task: { taskId: string; prompt: string; payload?: any; priority?: number }) {
+  public async dispatchTask(agentId: string, task: { taskId: string; prompt: string; payload?: unknown; priority?: number }) {
     const session = this.activeSessions.get(agentId.toLowerCase());
     if (!session || session.ws.readyState !== WebSocket.OPEN) {
       console.warn(`[Gateway] 派发失败: Agent ${agentId} 当前不在线，任务将保留在数据库队列`);
@@ -346,7 +363,7 @@ export class AgentGateway {
   }
 
   // 更新 Agent 数据库状态
-  private async updateAgentStatus(agentId: string, status: string, capabilities?: any) {
+  private async updateAgentStatus(agentId: string, status: string, capabilities?: string[]) {
     try {
       await prisma.agent.update({
         where: { id: agentId },
@@ -357,34 +374,56 @@ export class AgentGateway {
         },
       });
       this.broadcastEvent({ type: "AGENT_STATUS_CHANGE", agentId, status });
-    } catch (e) {
+    } catch {
       // 容错
     }
   }
 
   // 发送消息封装
-  private send(ws: WebSocket, obj: any) {
+  private send(ws: WebSocket, obj: unknown) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(obj));
     }
   }
 
   // 注册全局事件监听器
-  public onEvent(callback: (event: any) => void) {
+  public onEvent(callback: (event: Record<string, unknown>) => void) {
     this.eventListeners.add(callback);
     return () => this.eventListeners.delete(callback);
   }
 
-  private broadcastEvent(event: any) {
+  private broadcastEvent(event: Record<string, unknown>) {
     for (const listener of this.eventListeners) {
       try {
         listener(event);
-      } catch (err) {}
+      } catch {
+        // 忽略监听器异常
+      }
     }
   }
 
   // 查询当前在线的 Agent
   public getOnlineAgents() {
     return Array.from(this.activeSessions.keys());
+  }
+
+  // 主动断开并清理 Agent 连接
+  public disconnectAgent(agentId: string, reason = "Agent unregistered") {
+    const key = agentId.toLowerCase();
+    const session = this.activeSessions.get(key);
+    if (session) {
+      try {
+        session.ws.close(4000, reason);
+      } catch {
+        // 忽略关闭连接异常
+      }
+      this.activeSessions.delete(key);
+      this.broadcastEvent({ type: "AGENT_STATUS_CHANGE", agentId: key, status: "OFFLINE" });
+    }
+  }
+
+  // 公共广播事件
+  public broadcast(event: Record<string, unknown>) {
+    this.broadcastEvent(event);
   }
 }

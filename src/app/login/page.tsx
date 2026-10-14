@@ -32,7 +32,7 @@ export default function LoginPage() {
       } else {
         setError(data.error || "访问密码错误，请重试");
       }
-    } catch (err: any) {
+    } catch {
       setError("网络错误，请稍后重试");
     } finally {
       setLoading(false);

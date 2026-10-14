@@ -13,8 +13,9 @@ export async function GET() {
       },
     });
     return NextResponse.json(conversations);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "获取会话失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -28,7 +29,8 @@ export async function POST(req: Request) {
       },
     });
     return NextResponse.json(conversation);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "创建会话失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

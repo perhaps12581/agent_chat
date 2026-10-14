@@ -1,0 +1,18 @@
+# 云服务器专用生产配置 (无需拉取项目源码，直接拉取远程构建镜像)
+# 使用方式: 在服务器新建目录，放上本文件(重命名为 docker-compose.yml)与 .env，然后执行:
+# docker compose pull && docker compose up -d
+
+version: "3.8"
+
+services:
+  agent-hub:
+    # 你的 GitHub 镜像地址
+    image: ghcr.io/perhaps12581/agent_chat:latest
+    container_name: agent-hub-app
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

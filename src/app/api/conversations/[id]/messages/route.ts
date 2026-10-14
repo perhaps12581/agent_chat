@@ -14,8 +14,9 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     });
     return NextResponse.json(messages);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "获取消息失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -108,7 +109,8 @@ export async function POST(
     }
 
     return NextResponse.json({ userMessage });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "发送消息失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -39,7 +39,8 @@ export async function GET(
       prompt: task.prompt,
       payload: task.payload,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "获取任务载荷失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
