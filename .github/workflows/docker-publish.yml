@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # 支持手动点击按钮触发
+  workflow_dispatch: # 支持在 GitHub Actions 页面手动点击 Run workflow 触发
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 登录 GitHub 自带的容器镜像仓库 (无需外部账号，系统内置 Token)
+      # 登录 GitHub 自带的容器镜像仓库
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -27,10 +27,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 转换仓库名为小写，防止 Docker 镜像名大小写报错
-      - name: Lowercase Repository Name
-        run: |
-          echo "IMAGE_NAME=ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+      # 自动生成安全标准的 Docker 标签
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/perhaps12581/agent_chat
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
 
       # 构建并推送 Linux amd64 生产镜像
       - name: Build and push Docker image
@@ -40,8 +45,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
