@@ -2,17 +2,24 @@
 
 import React, { useState } from "react";
 import { Lock, ArrowRight, Layers } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!password || loading) return;
+    if (loading) return;
+
+    // 从表单 FormData 中获取实际值，完美防御浏览器自动填充未触发 onChange 的情况
+    const formData = new FormData(e.currentTarget);
+    const inputPassword = ((formData.get("password") as string) || password || "").trim();
+
+    if (!inputPassword) {
+      setError("请输入访问密码");
+      return;
+    }
 
     setError("");
     setLoading(true);
@@ -21,20 +28,20 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: inputPassword }),
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        router.push("/");
-        router.refresh();
+        // 验证成功，强制重定向刷新页面
+        window.location.href = "/";
       } else {
         setError(data.error || "访问密码错误");
+        setLoading(false);
       }
     } catch {
-      setError("网络连接异常");
-    } finally {
+      setError("网络连接异常，请重试");
       setLoading(false);
     }
   }
@@ -64,27 +71,31 @@ export default function LoginPage() {
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
+                  name="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError("");
+                  }}
                   placeholder="请输入访问密码..."
                   autoFocus
                   required
+                  autoComplete="current-password"
                   className="w-full pl-9 pr-4 py-2.5 bg-[#121417] border border-[#272b36] rounded-xl text-sm text-[#e2e6eb] placeholder-[#576070] focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
             </div>
 
             {error && (
-              <div className="text-xs text-rose-300 bg-rose-950/30 border border-rose-900/40 p-2 rounded-lg text-center">
+              <div className="text-xs text-rose-300 bg-rose-950/40 border border-rose-900/50 p-2.5 rounded-lg text-center animate-in fade-in">
                 {error}
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading || !password}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]"
+              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
               <span>{loading ? "验证中..." : "进入工作台"}</span>
               <ArrowRight className="w-4 h-4" />
