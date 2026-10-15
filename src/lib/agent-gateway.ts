@@ -203,7 +203,7 @@ export class AgentGateway {
               lastStep: status || undefined,
             },
           });
-          this.broadcastEvent({ type: "TASK_ACK", taskId, status, reason });
+          this.broadcastEvent({ type: "TASK_ACK", taskId, agentId: session.agentId, status, reason });
         }
         break;
       }
@@ -244,7 +244,7 @@ export class AgentGateway {
             },
           });
 
-          this.broadcastEvent({ type: "TASK_PROGRESS", taskId, step, message, progress });
+          this.broadcastEvent({ type: "TASK_PROGRESS", taskId, agentId: session.agentId, step, message, progress });
         }
         break;
       }
@@ -288,7 +288,7 @@ export class AgentGateway {
             },
           });
 
-          this.broadcastEvent({ type: "TASK_COMPLETE", taskId, status: finalStatus, result, artifacts });
+          this.broadcastEvent({ type: "TASK_COMPLETE", taskId, agentId: session.agentId, status: finalStatus, result, artifacts });
         }
         break;
       }
@@ -334,6 +334,7 @@ export class AgentGateway {
     }
 
     this.send(session.ws, dispatchEnvelope);
+    this.broadcastEvent({ type: "TASK_DISPATCH", taskId: task.taskId, agentId, prompt: task.prompt });
     console.log(`[Gateway] 已向 Agent ${agentId} 下发任务 ${task.taskId}`);
     return true;
   }

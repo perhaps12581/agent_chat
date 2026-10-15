@@ -10,10 +10,56 @@ export async function GET() {
     });
     const onlineAgents = AgentGateway.getInstance().getOnlineAgents();
 
-    const formatted = agents.map((agent) => ({
-      ...agent,
-      isOnline: onlineAgents.includes(agent.id.toLowerCase()),
-    }));
+    // 查询当前正在处理中的任务（PENDING, ACCEPTED, RUNNING）
+    const activeTasks = await prisma.task.findMany({
+      where: {
+        status: { in: ["PENDING", "ACCEPTED", "RUNNING"] },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    // 建立 agentId -> activeTask 映射
+    const activeTaskMap = new Map<string, (typeof activeTasks)[0]>();
+    for (const t of activeTasks) {
+      const k = t.agentId.toLowerCase();
+      if (!activeTaskMap.has(k)) {
+        activeTaskMap.set(k, t);
+      }
+    }
+
+    const formatted = agents.map((agent) => {
+      const isOnline = onlineAgents.includes(agent.id.toLowerCase());
+      const currentTask = activeTaskMap.get(agent.id.toLowerCase()) || null;
+
+      let statusSummary = "离线待连接";
+      if (isOnline) {
+        if (currentTask) {
+          const stepStr = currentTask.lastStep ? ` [${currentTask.lastStep}]` : "";
+          const progressStr = currentTask.progress ? ` (${currentTask.progress}%)` : "";
+          statusSummary = `执行中: ${currentTask.prompt.slice(0, 36)}${stepStr}${progressStr}`;
+        } else {
+          statusSummary = "空闲就绪";
+        }
+      }
+
+      return {
+        ...agent,
+        isOnline,
+        isBusy: isOnline && !!currentTask,
+        activeTask: currentTask
+          ? {
+              taskId: currentTask.taskId,
+              prompt: currentTask.prompt,
+              status: currentTask.status,
+              step: currentTask.lastStep,
+              progress: currentTask.progress,
+              priority: currentTask.priority,
+              updatedAt: currentTask.updatedAt,
+            }
+          : null,
+        statusSummary,
+      };
+    });
 
     return NextResponse.json(formatted);
   } catch (error: unknown) {
@@ -105,6 +151,45 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { id, name, capabilities } = body;
+
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ error: "缺少 agent id" }, { status: 400 });
+    }
+
+    const agentId = id.toLowerCase();
+    const existing = await prisma.agent.findUnique({
+      where: { id: agentId },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Agent 不存在" }, { status: 404 });
+    }
+
+    const updated = await prisma.agent.update({
+      where: { id: agentId },
+      data: {
+        name: typeof name === "string" ? name.trim().slice(0, 50) : undefined,
+        capabilities: Array.isArray(capabilities) ? capabilities : undefined,
+      },
+    });
+
+    AgentGateway.getInstance().broadcast({
+      type: "AGENT_STATUS_CHANGE",
+      agentId,
+      action: "UPDATE",
+    });
+
+    return NextResponse.json(updated);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "更新 Agent 失败";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -128,7 +213,7 @@ export async function DELETE(req: Request) {
     // 2. 如果当前在线，断开其连接
     AgentGateway.getInstance().disconnectAgent(agentId, "Admin unregistered agent");
 
-    // 3. 删除关联任务与消息中不需要级联阻断的地方，删除 agent
+    // 3. 删除 agent
     await prisma.agent.delete({
       where: { id: agentId },
     });
