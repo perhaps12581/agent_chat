@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { Wifi, WifiOff, Sparkles, Activity } from "lucide-react";
+import { getAgentAvatarUrl } from "@/lib/avatars";
 
 export interface ActiveTaskInfo {
   taskId: string;
@@ -16,6 +17,7 @@ export interface ActiveTaskInfo {
 export interface AgentItem {
   id: string;
   name: string;
+  avatar?: string | null;
   token?: string;
   status: string;
   isOnline: boolean;
@@ -92,6 +94,7 @@ export default function MentionDropdown({
         {filteredAgents.map((agent, index) => {
           const isSelected = index === selectedIndex;
           const isBusy = agent.isOnline && !!agent.activeTask;
+          const avatarUrl = getAgentAvatarUrl(agent.avatar, agent.id);
 
           return (
             <div
@@ -105,16 +108,15 @@ export default function MentionDropdown({
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                {/* 头像 */}
+                {/* 形象头像 */}
                 <div className="relative flex-shrink-0">
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${
-                      isSelected
-                        ? "bg-white/20 text-white"
-                        : "bg-[#252932] text-[#bac3d2] border border-[#2f3542]"
-                    }`}
-                  >
-                    {agent.id.slice(0, 2).toUpperCase()}
+                  <div className="w-7 h-7 rounded-lg overflow-hidden bg-[#20252e] border border-[#2f3542] flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={avatarUrl}
+                      alt={agent.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <span
                     className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ${
@@ -155,7 +157,7 @@ export default function MentionDropdown({
                         isSelected ? "text-indigo-200" : "text-[#6b7585]"
                       }`}
                     >
-                      {agent.isOnline ? "空闲就绪" : "离线"}
+                      {agent.isOnline ? "空闲待命" : "离线"}
                     </div>
                   )}
                 </div>

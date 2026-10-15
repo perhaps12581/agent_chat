@@ -22,10 +22,27 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const { title, isGroup, targetAgentId } = body;
+
+    // 如果是单聊且指定了 targetAgentId，若已有该 Agent 的单聊会话则直接返回复用
+    if (isGroup === false && targetAgentId) {
+      const existingDm = await prisma.conversation.findFirst({
+        where: {
+          isGroup: false,
+          targetAgentId: targetAgentId.toLowerCase(),
+        },
+      });
+
+      if (existingDm) {
+        return NextResponse.json(existingDm);
+      }
+    }
+
     const conversation = await prisma.conversation.create({
       data: {
-        title: body.title || "新任务讨论群",
-        isGroup: body.isGroup ?? true,
+        title: title || (targetAgentId ? `@${targetAgentId} 单聊` : "新讨论组"),
+        isGroup: isGroup ?? (targetAgentId ? false : true),
+        targetAgentId: targetAgentId ? targetAgentId.toLowerCase() : null,
       },
     });
     return NextResponse.json(conversation);

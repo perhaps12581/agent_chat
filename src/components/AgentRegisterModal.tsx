@@ -11,10 +11,12 @@ import {
   Code2,
 } from "lucide-react";
 import { appConfig, apiFetch } from "@/lib/config";
+import { AVATAR_OPTIONS } from "@/lib/avatars";
 
 interface RegisteredAgent {
   id: string;
   name: string;
+  avatar?: string | null;
   token: string;
   capabilities?: string[];
 }
@@ -32,6 +34,7 @@ export default function AgentRegisterModal({
 }: AgentRegisterModalProps) {
   const [agentId, setAgentId] = useState("");
   const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState(AVATAR_OPTIONS[0].id);
   const [token, setToken] = useState("");
   const [capabilities, setCapabilities] = useState("step_progress, artifacts_meta");
   const [loading, setLoading] = useState(false);
@@ -84,6 +87,7 @@ export default function AgentRegisterModal({
         body: JSON.stringify({
           id: cleanId,
           name: name.trim() || undefined,
+          avatar: avatar || undefined,
           token: token.trim() || undefined,
           capabilities: caps,
         }),
@@ -106,6 +110,7 @@ export default function AgentRegisterModal({
   function handleClose() {
     setAgentId("");
     setName("");
+    setAvatar(AVATAR_OPTIONS[0].id);
     setToken("");
     setError("");
     setRegisteredAgent(null);
@@ -222,6 +227,33 @@ export default function AgentRegisterModal({
                   placeholder="例如 Muse 5号机 (备用)"
                   className="w-full bg-[#121418] border border-[#262a34] rounded-xl px-3 py-2 text-xs text-[#e1e5eb] placeholder-[#576070] focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              {/* 形象头像快速选择 */}
+              <div>
+                <label className="block text-xs font-medium text-[#8892a2] mb-1.5">
+                  选择初始形象头像
+                </label>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATAR_OPTIONS.slice(0, 6).map((opt) => (
+                    <div
+                      key={opt.id}
+                      onClick={() => setAvatar(opt.id)}
+                      className={`p-1.5 rounded-xl cursor-pointer flex items-center justify-center border transition-all ${
+                        avatar === opt.id
+                          ? "bg-indigo-600/20 border-indigo-500"
+                          : "bg-[#14161b] border-[#252932] hover:border-[#384050]"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={opt.url}
+                        alt={opt.label}
+                        className="w-8 h-8 rounded-lg object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>

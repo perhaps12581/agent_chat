@@ -11,6 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AgentItem } from "./MentionDropdown";
+import { getAgentAvatarUrl } from "@/lib/avatars";
 
 interface AgentStatusPopoverProps {
   agent: AgentItem;
@@ -30,6 +31,7 @@ export default function AgentStatusPopover({
   const activeTask = agent.activeTask;
   const isBusy = agent.isOnline && !!activeTask;
   const isOnline = agent.isOnline;
+  const avatarUrl = getAgentAvatarUrl(agent.avatar, agent.id);
 
   const handleMouseEnter = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -94,18 +96,21 @@ export default function AgentStatusPopover({
         >
           {/* 顶部标题行 */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#292e39]">
-            <div className="flex items-center gap-1.5 font-medium">
-              <span className="w-2 h-2 rounded-full inline-block"
-                style={{
-                  backgroundColor: isBusy ? "#f59e0b" : isOnline ? "#10b981" : "#64748b"
-                }}
-              />
-              <span className="text-[#e2e6ec] font-semibold">{agent.name}</span>
-              <span className="text-[11px] font-mono text-[#8c96a5]">@{agent.id}</span>
+            <div className="flex items-center gap-2 font-medium min-w-0">
+              <div className="w-5 h-5 rounded-md overflow-hidden bg-[#20252e] flex-shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarUrl}
+                  alt={agent.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span className="text-[#e2e6ec] font-semibold truncate">{agent.name}</span>
+              <span className="text-[11px] font-mono text-[#8c96a5] flex-shrink-0">@{agent.id}</span>
             </div>
 
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${
                 isBusy
                   ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
                   : isOnline
@@ -161,7 +166,7 @@ export default function AgentStatusPopover({
                 <span className="font-medium text-[11px]">节点空闲，随时可派发</span>
               </div>
               <p className="text-[11px] text-[#6f7887] leading-relaxed">
-                在输入框输入 @{agent.id} 即可指派任务，任务到达后自动唤起执行。
+                在单聊中发送任意内容，或在群聊中输入 @{agent.id} 即可指派任务。
               </p>
             </div>
           ) : (

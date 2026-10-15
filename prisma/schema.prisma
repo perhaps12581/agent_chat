@@ -9,12 +9,13 @@ generator client {
 
 // 会话/群聊表
 model Conversation {
-  id        String    @id @default(uuid())
-  title     String    @default("新会话")
-  isGroup   Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
+  id             String    @id @default(uuid())
+  title          String    @default("新会话")
+  isGroup        Boolean   @default(false)
+  targetAgentId  String?   // 单聊绑定的专属 Agent ID（为空表示群聊）
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  messages       Message[]
 
   @@map("conversations")
 }
@@ -41,6 +42,7 @@ model Message {
 model Agent {
   id              String   @id // muse, dot
   name            String
+  avatar          String?  // 头像标识符或 URL（如 bottts:muse1, notion:geek）
   token           String
   status          String   @default("OFFLINE") // ONLINE, BUSY, OFFLINE
   capabilities    Json?

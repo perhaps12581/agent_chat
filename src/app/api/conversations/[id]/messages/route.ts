@@ -33,6 +33,15 @@ export async function POST(
       return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
     }
 
+    // 查询当前会话是否为绑定单个 Agent 的单聊
+    const conversation = await prisma.conversation.findUnique({
+      where: { id },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: "会话不存在" }, { status: 404 });
+    }
+
     // 1. 保存用户的消息
     const userMessage = await prisma.message.create({
       data: {
@@ -45,12 +54,28 @@ export async function POST(
       },
     });
 
-    // 2. 检测是否提及了任何 Agent (例如 @muse, @muse1, @muse2, @dot 等)
-    const match = content.match(/@([a-zA-Z0-9_-]+)\s*([\s\S]*)/i);
-    if (match) {
-      const targetAgentId = match[1].toLowerCase();
-      const taskPrompt = match[2]?.trim() || content;
+    // 2. 判断任务分发目标：
+    // A. 如果是单聊（targetAgentId 存在），直接派发给该 Agent，无需 @！
+    // B. 如果是群聊，检测消息中是否包含 @AgentId
+    let targetAgentId: string | null = null;
+    let taskPrompt = content;
 
+    if (!conversation.isGroup && conversation.targetAgentId) {
+      targetAgentId = conversation.targetAgentId.toLowerCase();
+      // 如果单聊里也顺手打了 @muse，清理掉前缀
+      const match = content.match(/@([a-zA-Z0-9_-]+)\s*([\s\S]*)/i);
+      if (match && match[1].toLowerCase() === targetAgentId) {
+        taskPrompt = match[2]?.trim() || content;
+      }
+    } else {
+      const match = content.match(/@([a-zA-Z0-9_-]+)\s*([\s\S]*)/i);
+      if (match) {
+        targetAgentId = match[1].toLowerCase();
+        taskPrompt = match[2]?.trim() || content;
+      }
+    }
+
+    if (targetAgentId) {
       // 验证是否是已知存在的 Agent
       const targetAgent = await prisma.agent.findUnique({
         where: { id: targetAgentId },
@@ -74,7 +99,7 @@ export async function POST(
           },
         });
 
-        // 4. 在群聊中插入 Agent 正在处理的占位卡片消息
+        // 4. 在会话中插入 Agent 正在处理的占位卡片消息
         const agentMessage = await prisma.message.create({
           data: {
             conversationId: id,

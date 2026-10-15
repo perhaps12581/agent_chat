@@ -3,12 +3,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   Send,
-  Bot,
   User,
   CheckCircle2,
   Clock,
   AlertCircle,
-  Activity,
   Layers,
   Sparkles,
   LogOut,
@@ -20,7 +18,8 @@ import {
   Check,
   FileText,
   MessageSquare,
-  Edit2,
+  Users,
+  ImageIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { appConfig, apiFetch } from "@/lib/config";
@@ -28,6 +27,8 @@ import AgentRegisterModal from "@/components/AgentRegisterModal";
 import AgentConfigModal from "@/components/AgentConfigModal";
 import MentionDropdown, { AgentItem } from "@/components/MentionDropdown";
 import AgentStatusPopover from "@/components/AgentStatusPopover";
+import AvatarPickerModal from "@/components/AvatarPickerModal";
+import { getAgentAvatarUrl } from "@/lib/avatars";
 
 interface Message {
   id: string;
@@ -46,6 +47,7 @@ interface Conversation {
   id: string;
   title: string;
   isGroup: boolean;
+  targetAgentId?: string | null;
 }
 
 export default function ChatHubPage() {
@@ -63,9 +65,8 @@ export default function ChatHubPage() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
 
-  // Agent 快速改名状态
-  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState("");
+  // 头像选择弹窗
+  const [avatarModalTarget, setAvatarModalTarget] = useState<AgentItem | null>(null);
 
   // @ 下拉状态
   const [isMentionOpen, setIsMentionOpen] = useState(false);
@@ -106,7 +107,6 @@ export default function ChatHubPage() {
                 : msg
             )
           );
-          // 收到进度更新，自动刷新对应 Agent 的工作内容
           fetchAgents();
         } else if (data.type === "TASK_COMPLETE") {
           setMessages((prev) =>
@@ -171,9 +171,39 @@ export default function ChatHubPage() {
     }
   }
 
-  // 创建新会话
-  async function handleCreateConversation() {
-    const title = window.prompt("请输入新会话名称:", `讨论组 ${conversations.length + 1}`);
+  // 切换或开启单聊
+  async function handleOpenDirectChat(agent: AgentItem) {
+    // 检查是否已有该 Agent 的单聊
+    const existing = conversations.find(
+      (c) => !c.isGroup && c.targetAgentId?.toLowerCase() === agent.id.toLowerCase()
+    );
+
+    if (existing) {
+      setActiveConvId(existing.id);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+      return;
+    }
+
+    // 创建新的单聊
+    const res = await apiFetch<Conversation>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({
+        title: `${agent.name} (单聊)`,
+        isGroup: false,
+        targetAgentId: agent.id,
+      }),
+    });
+
+    if (res.data) {
+      setConversations((prev) => [res.data!, ...prev]);
+      setActiveConvId(res.data.id);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }
+
+  // 创建新群聊
+  async function handleCreateGroup() {
+    const title = window.prompt("请输入新群聊名称:", `智能体讨论组 ${conversations.length + 1}`);
     if (!title || !title.trim()) return;
 
     const res = await apiFetch<Conversation>("/api/conversations", {
@@ -187,17 +217,12 @@ export default function ChatHubPage() {
     }
   }
 
-  // 修改 Agent 名称
-  async function handleSaveAgentName(agentId: string) {
-    if (!editingName.trim()) {
-      setEditingAgentId(null);
-      return;
-    }
+  // 保存头像
+  async function handleSaveAvatar(agentId: string, avatarUrlOrId: string) {
     await apiFetch("/api/agents", {
       method: "PATCH",
-      body: JSON.stringify({ id: agentId, name: editingName.trim() }),
+      body: JSON.stringify({ id: agentId, avatar: avatarUrlOrId }),
     });
-    setEditingAgentId(null);
     fetchAgents();
   }
 
@@ -371,6 +396,12 @@ export default function ChatHubPage() {
     }
   }
 
+  const currentConv = conversations.find((c) => c.id === activeConvId);
+  const isDirectChat = currentConv ? !currentConv.isGroup && !!currentConv.targetAgentId : false;
+  const directTargetAgent = isDirectChat
+    ? agents.find((a) => a.id.toLowerCase() === currentConv?.targetAgentId?.toLowerCase())
+    : null;
+
   const onlineCount = agents.filter((a) => a.isOnline).length;
   const targetAgentMatch = inputValue.match(/@([a-zA-Z0-9_-]+)/);
   const detectedTargetAgent = targetAgentMatch
@@ -392,7 +423,21 @@ export default function ChatHubPage() {
         onClose={() => setIsConfigOpen(false)}
       />
 
-      {/* ================= 左侧侧边栏 (默认展示智能体集群) ================= */}
+      {/* 弹窗：设置头像形象 */}
+      {avatarModalTarget && (
+        <AvatarPickerModal
+          isOpen={true}
+          agentId={avatarModalTarget.id}
+          agentName={avatarModalTarget.name}
+          currentAvatar={avatarModalTarget.avatar}
+          onClose={() => setAvatarModalTarget(null)}
+          onSave={async (avatar) => {
+            await handleSaveAvatar(avatarModalTarget.id, avatar);
+          }}
+        />
+      )}
+
+      {/* ================= 左侧侧边栏 (默认展示智能体集群与单聊入口) ================= */}
       <aside className="w-80 border-r border-[#22262f] flex flex-col bg-[#101215] select-none flex-shrink-0">
         {/* 顶部标题栏 */}
         <div className="h-14 px-4 border-b border-[#22262f] flex items-center justify-between">
@@ -425,45 +470,60 @@ export default function ChatHubPage() {
           </div>
         </div>
 
-        {/* 会话频道紧凑标签切换 */}
+        {/* 会话频道切换：单聊与群聊 */}
         <div className="px-3 py-2.5 border-b border-[#20242c] bg-[#121418]">
           <div className="flex items-center justify-between mb-1.5 text-[11px] text-[#6d7685]">
-            <span className="font-medium uppercase tracking-wider text-[10px]">会话频道</span>
+            <span className="font-medium uppercase tracking-wider text-[10px]">会话列表</span>
             <button
-              onClick={handleCreateConversation}
-              className="hover:text-indigo-400 flex items-center gap-0.5 transition-colors"
-              title="新建会话频道"
+              onClick={handleCreateGroup}
+              className="hover:text-indigo-400 flex items-center gap-0.5 transition-colors text-[11px]"
+              title="新建群聊频道"
             >
               <Plus className="w-3 h-3" />
-              <span>新建</span>
+              <span>新建群聊</span>
             </button>
           </div>
 
           <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {conversations.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => setActiveConvId(conv.id)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                  activeConvId === conv.id
-                    ? "bg-[#222731] text-[#e0e5ed] border border-[#333a49] shadow-sm"
-                    : "text-[#858f9f] hover:bg-[#171a20] hover:text-[#c4cbd5]"
-                }`}
-              >
-                <MessageSquare className="w-3 h-3 text-indigo-400" />
-                <span className="truncate max-w-[120px]">{conv.title}</span>
-              </button>
-            ))}
+            {conversations.map((conv) => {
+              const isDirect = !conv.isGroup && !!conv.targetAgentId;
+              const directAgent = isDirect
+                ? agents.find((a) => a.id.toLowerCase() === conv.targetAgentId?.toLowerCase())
+                : null;
+              const avatar = directAgent ? getAgentAvatarUrl(directAgent.avatar, directAgent.id) : null;
+
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => setActiveConvId(conv.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    activeConvId === conv.id
+                      ? "bg-[#222731] text-[#e0e5ed] border border-[#333a49] shadow-sm"
+                      : "text-[#858f9f] hover:bg-[#171a20] hover:text-[#c4cbd5]"
+                  }`}
+                >
+                  {isDirect && avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatar} alt="" className="w-3.5 h-3.5 rounded object-cover" />
+                  ) : conv.isGroup ? (
+                    <Users className="w-3 h-3 text-indigo-400" />
+                  ) : (
+                    <MessageSquare className="w-3 h-3 text-emerald-400" />
+                  )}
+                  <span className="truncate max-w-[120px]">{conv.title}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* 主体区域：智能体集群节点列表 (默认核心视图) */}
+        {/* 主体区域：智能体节点列表 (点击直接进入单聊，带头像与悬停状态) */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <div className="px-3.5 py-2.5 flex items-center justify-between text-xs text-[#7f8897] border-b border-[#1c2027]">
             <span className="font-medium text-[11px] uppercase tracking-wider">
               智能体列表 ({onlineCount}/{agents.length} 在线)
             </span>
-            <span className="text-[10px] text-[#646d7c]">悬停图标看工作内容</span>
+            <span className="text-[10px] text-[#646d7c]">点条目直接单聊</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
@@ -474,19 +534,31 @@ export default function ChatHubPage() {
             ) : (
               agents.map((agent: AgentItem) => {
                 const isBusy = agent.isOnline && !!agent.activeTask;
-                const isEditing = editingAgentId === agent.id;
+                const avatarUrl = getAgentAvatarUrl(agent.avatar, agent.id);
+                const isCurrentDm =
+                  isDirectChat && directTargetAgent?.id.toLowerCase() === agent.id.toLowerCase();
 
                 return (
                   <div
                     key={agent.id}
-                    className="p-2.5 rounded-xl border border-[#232731] bg-[#16181e] hover:border-[#313745] transition-all group relative"
+                    onClick={() => handleOpenDirectChat(agent)}
+                    className={`p-2.5 rounded-xl border transition-all group relative cursor-pointer ${
+                      isCurrentDm
+                        ? "bg-[#1c2029] border-indigo-500/40 shadow-sm"
+                        : "bg-[#16181e] border-[#232731] hover:border-[#313745] hover:bg-[#1a1d24]"
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      {/* 左侧：头像与在线指示 */}
+                      {/* 左侧：精美形象头像与状态指示 */}
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <div className="relative flex-shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-[#20242d] border border-[#2b303a] flex items-center justify-center text-xs font-semibold text-[#c8d0dc]">
-                            {agent.id.slice(0, 2).toUpperCase()}
+                          <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#20252e] border border-[#2b303a] flex items-center justify-center">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={avatarUrl}
+                              alt={agent.name}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
                           <span
                             className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#16181e] ${
@@ -501,40 +573,18 @@ export default function ChatHubPage() {
 
                         {/* 中间信息：名称 + ID + 悬浮工作内容 icon */}
                         <div className="min-w-0 flex-1">
-                          {isEditing ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                value={editingName}
-                                onChange={(e) => setEditingName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleSaveAgentName(agent.id);
-                                  if (e.key === "Escape") setEditingAgentId(null);
-                                }}
-                                autoFocus
-                                className="w-full bg-[#111317] border border-[#3b4353] rounded px-1.5 py-0.5 text-xs text-[#e1e5eb] focus:outline-none"
-                              />
-                              <button
-                                onClick={() => handleSaveAgentName(agent.id)}
-                                className="text-[10px] text-emerald-400 hover:underline px-1"
-                              >
-                                保存
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-[#dce1ea] truncate max-w-[100px]">
-                                {agent.name}
-                              </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-[#dce1ea] truncate max-w-[105px]">
+                              {agent.name}
+                            </span>
 
-                              {/* 工作内容悬浮图标！ */}
-                              <AgentStatusPopover agent={agent} side="right" />
+                            {/* 工作内容悬浮图标！ */}
+                            <AgentStatusPopover agent={agent} side="right" />
 
-                              <span className="text-[11px] font-mono text-[#6d7686] truncate">
-                                @{agent.id}
-                              </span>
-                            </div>
-                          )}
+                            <span className="text-[11px] font-mono text-[#6d7686] truncate">
+                              @{agent.id}
+                            </span>
+                          </div>
 
                           {/* 简短状态行 */}
                           <div className="text-[11px] text-[#717b8b] truncate mt-0.5">
@@ -545,7 +595,7 @@ export default function ChatHubPage() {
                               </span>
                             ) : agent.isOnline ? (
                               <span className="text-emerald-400/80 text-[10px]">
-                                在线待命
+                                空闲待命 · 点击单聊
                               </span>
                             ) : (
                               <span className="text-[#596270] text-[10px]">离线</span>
@@ -554,8 +604,20 @@ export default function ChatHubPage() {
                         </div>
                       </div>
 
-                      {/* 右侧操作按钮 */}
-                      <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                      {/* 右侧快捷操作按钮 */}
+                      <div
+                        className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* 换头像 */}
+                        <button
+                          onClick={() => setAvatarModalTarget(agent)}
+                          className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-indigo-300 transition-colors"
+                          title="修改形象头像"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* 复制 Token */}
                         {agent.token && (
                           <button
@@ -570,27 +632,6 @@ export default function ChatHubPage() {
                             )}
                           </button>
                         )}
-
-                        {/* 修改名称 */}
-                        <button
-                          onClick={() => {
-                            setEditingAgentId(agent.id);
-                            setEditingName(agent.name);
-                          }}
-                          className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-[#c4cbd5] transition-colors"
-                          title="修改备注名称"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-
-                        {/* 一键 @ 派发 */}
-                        <button
-                          onClick={() => handleSelectAgent(agent)}
-                          className="text-[11px] px-2 py-0.5 rounded-md bg-[#222732] hover:bg-indigo-600 hover:text-white text-[#bac3d1] transition-all font-medium border border-[#2e3543]"
-                          title="在输入框中指派"
-                        >
-                          @
-                        </button>
 
                         {/* 注销 */}
                         <button
@@ -615,13 +656,48 @@ export default function ChatHubPage() {
         {/* 顶部极简信息栏 */}
         <header className="h-14 border-b border-[#22262f] px-5 flex items-center justify-between bg-[#15171c]/90 backdrop-blur z-10">
           <div className="flex items-center gap-3">
-            <h2 className="font-medium text-sm text-[#e0e4ec]">
-              {conversations.find((c) => c.id === activeConvId)?.title || "任务协作"}
-            </h2>
-            <div className="flex items-center gap-1.5 text-xs text-[#727c8c]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>{onlineCount} 节点在线</span>
-            </div>
+            {isDirectChat && directTargetAgent ? (
+              <div className="flex items-center gap-2.5">
+                <div className="relative">
+                  <div className="w-7 h-7 rounded-lg overflow-hidden bg-[#20252e] border border-[#2d3340]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={getAgentAvatarUrl(directTargetAgent.avatar, directTargetAgent.id)}
+                      alt={directTargetAgent.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-[#15171c] ${
+                      directTargetAgent.isOnline ? "bg-emerald-400" : "bg-neutral-500"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="font-semibold text-sm text-[#e0e4ec]">
+                      {directTargetAgent.name}
+                    </h2>
+                    <span className="text-[11px] font-mono text-[#747e8e]">
+                      @{directTargetAgent.id}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-indigo-400 font-medium">
+                    1对1 单聊模式 (直接发送无需 @)
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <h2 className="font-medium text-sm text-[#e0e4ec]">
+                  {currentConv?.title || "协作群聊"}
+                </h2>
+                <span className="text-[11px] px-2 py-0.5 rounded bg-[#1e222b] text-[#8690a0] border border-[#2b303c]">
+                  群聊模式
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -657,6 +733,9 @@ export default function ChatHubPage() {
               );
             }
 
+            const senderAgent = isAgent ? agents.find((a) => a.id.toLowerCase() === msg.senderId.toLowerCase()) : null;
+            const senderAvatar = isAgent && senderAgent ? getAgentAvatarUrl(senderAgent.avatar, senderAgent.id) : null;
+
             return (
               <div
                 key={msg.id}
@@ -664,13 +743,22 @@ export default function ChatHubPage() {
               >
                 {/* 头像 */}
                 <div
-                  className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold ${
+                  className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
                     isMe
                       ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-[#1f242c] text-emerald-400 border border-[#2a313d]"
+                      : "bg-[#1f242c] border border-[#2a313d]"
                   }`}
                 >
-                  {isMe ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                  {isMe ? (
+                    <User className="w-4 h-4" />
+                  ) : senderAvatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={senderAvatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-semibold text-emerald-400">
+                      {msg.senderId.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
                 </div>
 
                 {/* 消息正文区 */}
@@ -768,45 +856,50 @@ export default function ChatHubPage() {
               onClose={() => setIsMentionOpen(false)}
             />
 
-            {/* 快捷药丸条 (带工作内容悬浮) */}
+            {/* 顶部指示条 */}
             <div className="flex items-center justify-between text-xs pb-1 overflow-x-auto">
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <span className="text-[#646d7d] flex items-center gap-1 mr-1">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>快捷派送:</span>
-                </span>
-                {agents.map((ag) => {
-                  const isBusy = ag.isOnline && !!ag.activeTask;
-                  return (
-                    <div
-                      key={ag.id}
-                      className="inline-flex items-center gap-1 bg-[#1a1d24] border border-[#262c36] hover:border-[#384050] rounded-full px-2 py-0.5 transition-all text-[#c4cbd5]"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleSelectAgent(ag)}
-                        className="flex items-center gap-1 text-xs"
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            isBusy
-                              ? "bg-amber-400 animate-pulse"
-                              : ag.isOnline
-                              ? "bg-emerald-400"
-                              : "bg-neutral-600"
-                          }`}
-                        />
-                        <span>@{ag.id}</span>
-                      </button>
-                      <AgentStatusPopover agent={ag} side="top" className="ml-0.5" />
-                    </div>
-                  );
-                })}
+                {isDirectChat && directTargetAgent ? (
+                  <span className="text-[11px] text-[#8a94a4] flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>正与</span>
+                    <strong className="text-indigo-300">@{directTargetAgent.id}</strong>
+                    <span>单独对话，直接输入即可分派</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[#646d7d] flex items-center gap-1 mr-1">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>快捷指派:</span>
+                    </span>
+                    {agents.map((ag) => {
+                      const isBusy = ag.isOnline && !!ag.activeTask;
+                      const avatar = getAgentAvatarUrl(ag.avatar, ag.id);
+                      return (
+                        <div
+                          key={ag.id}
+                          className="inline-flex items-center gap-1 bg-[#1a1d24] border border-[#262c36] hover:border-[#384050] rounded-full px-2 py-0.5 transition-all text-[#c4cbd5]"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAgent(ag)}
+                            className="flex items-center gap-1.5 text-xs"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={avatar} alt="" className="w-3 h-3 rounded object-cover" />
+                            <span>@{ag.id}</span>
+                          </button>
+                          <AgentStatusPopover agent={ag} side="top" className="ml-0.5" />
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
 
               {/* 目标指示与优先级 */}
               <div className="flex items-center gap-2 flex-shrink-0 pl-2">
-                {detectedTargetAgent && (
+                {!isDirectChat && detectedTargetAgent && (
                   <span className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-950/80 text-indigo-300 border border-indigo-700/40 flex items-center gap-1">
                     <span>目标:</span>
                     <strong className="text-white">@{detectedTargetAgent.id}</strong>
@@ -828,19 +921,21 @@ export default function ChatHubPage() {
 
             {/* 主输入框 */}
             <div className="relative flex items-end gap-2 bg-[#1a1d24] border border-[#292f3a] rounded-2xl p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all shadow-inner">
-              <button
-                type="button"
-                onClick={handleTriggerMention}
-                className={`p-2 rounded-xl transition-colors flex items-center gap-1 text-xs font-medium flex-shrink-0 ${
-                  isMentionOpen
-                    ? "bg-indigo-600 text-white"
-                    : "text-[#7b8595] hover:text-[#d3d9e4] hover:bg-[#232731]"
-                }`}
-                title="选择 Agent"
-              >
-                <AtSign className="w-4 h-4" />
-                <span className="hidden sm:inline">指派</span>
-              </button>
+              {!isDirectChat && (
+                <button
+                  type="button"
+                  onClick={handleTriggerMention}
+                  className={`p-2 rounded-xl transition-colors flex items-center gap-1 text-xs font-medium flex-shrink-0 ${
+                    isMentionOpen
+                      ? "bg-indigo-600 text-white"
+                      : "text-[#7b8595] hover:text-[#d3d9e4] hover:bg-[#232731]"
+                  }`}
+                  title="选择 Agent"
+                >
+                  <AtSign className="w-4 h-4" />
+                  <span className="hidden sm:inline">指派</span>
+                </button>
+              )}
 
               <textarea
                 ref={textareaRef}
@@ -848,7 +943,11 @@ export default function ChatHubPage() {
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息，输入 @ 快速指派 Muse 智能体..."
+                placeholder={
+                  isDirectChat
+                    ? `给 @${directTargetAgent?.id || "muse"} 发送任务或对话，按 Enter 发送...`
+                    : "输入消息，或输入 @ 快速指派特定 Muse 智能体..."
+                }
                 className="flex-1 bg-transparent border-0 resize-none py-1.5 px-2 text-sm text-[#e3e7ed] placeholder-[#5d6676] focus:outline-none max-h-32 leading-relaxed"
                 style={{ minHeight: "38px" }}
               />
