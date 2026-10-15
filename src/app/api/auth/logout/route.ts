@@ -2,6 +2,6 @@ import { NextResponse } from "next/server";
 
 export async function POST() {
   const response = NextResponse.json({ success: true });
-  response.cookies.delete("hub_session");
+  response.cookies.delete("hub_token");
   return response;
 }

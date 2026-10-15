@@ -7,6 +7,20 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// 用户表 (支持真实账号鉴权、加密密码存储与个人头像)
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  passwordHash String
+  name         String    @default("")
+  avatar       String?
+  role         String    @default("ADMIN") // ADMIN, USER
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("users")
+}
+
 // 会话/群聊表
 model Conversation {
   id             String    @id @default(uuid())

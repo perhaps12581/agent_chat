@@ -1,8 +1,30 @@
 import { prisma } from "./db";
+import { hashPassword } from "./auth";
 
 export async function seedAgents() {
   const token = process.env.AGENT_DEFAULT_TOKEN || "agtk_live_muse_secret_token_20261013";
 
+  // 1. 初始化默认管理员账号 (admin)
+  const defaultPassword = process.env.ACCESS_PASSWORD;
+  const existingAdmin = await prisma.user.findUnique({
+    where: { username: "admin" },
+  });
+
+  if (!existingAdmin && defaultPassword) {
+    const passwordHash = await hashPassword(defaultPassword);
+    await prisma.user.create({
+      data: {
+        username: "admin",
+        passwordHash,
+        name: "管理员",
+        role: "ADMIN",
+        avatar: "notion_muse_coder",
+      },
+    });
+    console.log("Admin user initialized (username: admin)");
+  }
+
+  // 2. 初始化智能体节点
   const defaultAgents = [
     { id: "muse", name: "Muse 主节点", avatar: "notion_muse_coder", token },
     { id: "muse1", name: "Muse 1号机", avatar: "notion_muse_architect", token },
@@ -27,7 +49,7 @@ export async function seedAgents() {
     });
   }
 
-  // 预置一个默认的群聊会话
+  // 3. 预置一个默认的群聊会话
   const existingConv = await prisma.conversation.findFirst({
     where: { title: "Agent 智能体协作群" },
   });
@@ -50,5 +72,5 @@ export async function seedAgents() {
     });
   }
 
-  console.log("Database initialized: Agents and Default Conversation ready.");
+  console.log("Database initialized: Users, Agents and Default Conversation ready.");
 }

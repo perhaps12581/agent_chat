@@ -50,8 +50,17 @@ interface Conversation {
   targetAgentId?: string | null;
 }
 
+interface UserInfo {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  avatar?: string | null;
+}
+
 export default function ChatHubPage() {
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -76,8 +85,9 @@ export default function ChatHubPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. 初始化会话与 Agent 列表
+  // 1. 初始化会话与 Agent 列表与当前用户
   useEffect(() => {
+    fetchCurrentUser();
     fetchConversations();
     fetchAgents();
     const interval = setInterval(fetchAgents, 6000);
@@ -146,6 +156,13 @@ export default function ChatHubPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  async function fetchCurrentUser() {
+    const res = await apiFetch<UserInfo>("/api/auth/me");
+    if (res.data) {
+      setCurrentUser(res.data);
+    }
+  }
 
   async function fetchConversations() {
     const res = await apiFetch<Conversation[]>("/api/conversations");
@@ -700,18 +717,29 @@ export default function ChatHubPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            {currentUser && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1a1d24] border border-[#262c36] text-xs">
+                <div className="w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center text-[10px] font-semibold">
+                  {currentUser.username.slice(0, 1).toUpperCase()}
+                </div>
+                <span className="text-[#c8d1de] font-medium text-[11px]">{currentUser.name || currentUser.username}</span>
+                <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-950 text-indigo-300 font-mono">
+                  {currentUser.role}
+                </span>
+              </div>
+            )}
+
             <button
               onClick={async () => {
                 await apiFetch("/api/auth/logout", { method: "POST" });
-                router.push("/login");
-                router.refresh();
+                window.location.href = "/login";
               }}
-              className="text-xs px-2.5 py-1.5 rounded-lg border border-[#272b35] hover:bg-[#1f232b] text-[#8690a0] hover:text-[#d3d9e4] flex items-center gap-1.5 transition-colors"
-              title="锁定退出"
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-[#272b35] hover:bg-[#1f232b] text-[#8690a0] hover:text-[#d3d9e4] flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="退出登录"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>锁定</span>
+              <span>退出</span>
             </button>
           </div>
         </header>
