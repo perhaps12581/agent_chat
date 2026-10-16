@@ -17,6 +17,7 @@ export interface ActiveTaskInfo {
 export interface AgentItem {
   id: string;
   name: string;
+  description?: string | null;
   avatar?: string | null;
   token?: string;
   status: string;

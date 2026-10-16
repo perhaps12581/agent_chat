@@ -56,6 +56,7 @@ model Message {
 model Agent {
   id              String   @id // muse, dot
   name            String
+  description     String?  @db.Text // 智能体职责/工作描述
   avatar          String?  // 头像标识符或 URL（如 bottts:muse1, notion:geek）
   token           String
   status          String   @default("OFFLINE") // ONLINE, BUSY, OFFLINE

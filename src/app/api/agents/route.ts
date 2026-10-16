@@ -71,7 +71,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { capabilities, avatar } = body;
+    const { capabilities, avatar, description } = body;
     let { id, name, token } = body;
 
     // 1. 验证 ID
@@ -124,6 +124,7 @@ export async function POST(req: Request) {
       data: {
         id,
         name,
+        description: typeof description === "string" ? description.trim() : null,
         avatar: typeof avatar === "string" ? avatar.trim() : null,
         token,
         status: "OFFLINE",
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, name, avatar, capabilities } = body;
+    const { id, name, description, avatar, capabilities } = body;
 
     if (!id || typeof id !== "string") {
       return NextResponse.json({ error: "缺少 agent id" }, { status: 400 });
@@ -174,6 +175,7 @@ export async function PATCH(req: Request) {
       where: { id: agentId },
       data: {
         name: typeof name === "string" ? name.trim().slice(0, 50) : undefined,
+        description: typeof description === "string" ? description.trim() : description === null ? null : undefined,
         avatar: typeof avatar === "string" ? avatar.trim() : avatar === null ? null : undefined,
         capabilities: Array.isArray(capabilities) ? capabilities : undefined,
       },

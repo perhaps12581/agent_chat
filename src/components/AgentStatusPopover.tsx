@@ -9,6 +9,7 @@ import {
   Layers,
   Sparkles,
   Zap,
+  Info,
 } from "lucide-react";
 import { AgentItem } from "./MentionDropdown";
 import { getAgentAvatarUrl } from "@/lib/avatars";
@@ -121,6 +122,14 @@ export default function AgentStatusPopover({
               {isBusy ? "执行中" : isOnline ? "空闲就绪" : "离线"}
             </span>
           </div>
+
+          {/* 职责与设定描述 (如果已配置) */}
+          {agent.description && (
+            <div className="mb-2.5 p-2 rounded-lg bg-[#14161b]/90 border border-[#242832] flex items-start gap-1.5 text-[11px] text-[#abb5c5] leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 mt-0.5" />
+              <span>{agent.description}</span>
+            </div>
+          )}
 
           {/* 中间核心：工作内容详情 */}
           {isBusy && activeTask ? (

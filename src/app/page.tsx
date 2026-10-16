@@ -19,6 +19,7 @@ import {
   FileText,
   Users,
   ImageIcon,
+  Edit3,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { appConfig, apiFetch } from "@/lib/config";
@@ -27,6 +28,7 @@ import AgentConfigModal from "@/components/AgentConfigModal";
 import MentionDropdown, { AgentItem } from "@/components/MentionDropdown";
 import AgentStatusPopover from "@/components/AgentStatusPopover";
 import AvatarPickerModal from "@/components/AvatarPickerModal";
+import AgentProfileModal from "@/components/AgentProfileModal";
 import { getAgentAvatarUrl } from "@/lib/avatars";
 
 interface Message {
@@ -82,6 +84,9 @@ export default function ChatHubPage() {
 
   // 头像选择弹窗
   const [avatarModalTarget, setAvatarModalTarget] = useState<AgentItem | null>(null);
+
+  // 资料编辑弹窗 (名称与描述)
+  const [profileModalTarget, setProfileModalTarget] = useState<AgentItem | null>(null);
 
   // @ 下拉状态
   const [isMentionOpen, setIsMentionOpen] = useState(false);
@@ -310,6 +315,15 @@ export default function ChatHubPage() {
     await apiFetch("/api/agents", {
       method: "PATCH",
       body: JSON.stringify({ id: agentId, avatar: avatarUrlOrId }),
+    });
+    fetchAgents();
+  }
+
+  // 保存资料 (名称与描述)
+  async function handleSaveProfile(agentId: string, name: string, description: string) {
+    await apiFetch("/api/agents", {
+      method: "PATCH",
+      body: JSON.stringify({ id: agentId, name, description }),
     });
     fetchAgents();
   }
@@ -592,6 +606,14 @@ export default function ChatHubPage() {
         />
       )}
 
+      {/* 弹窗：编辑名称与职责描述 */}
+      <AgentProfileModal
+        isOpen={!!profileModalTarget}
+        agent={profileModalTarget}
+        onClose={() => setProfileModalTarget(null)}
+        onSave={handleSaveProfile}
+      />
+
       {/* ================= 左侧侧边栏 (支持拖拽调整宽度、固定群聊、单聊列表) ================= */}
       <aside
         style={{ width: `${sidebarWidth}px` }}
@@ -773,12 +795,16 @@ export default function ChatHubPage() {
                             </span>
                           </div>
 
-                          {/* 简短状态行 */}
+                          {/* 职责描述 / 状态简述行 */}
                           <div className="text-[11px] text-[#717b8b] truncate mt-0.5">
                             {isBusy && agent.activeTask ? (
                               <span className="text-amber-400/90 truncate flex items-center gap-1 text-[10px]">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                                 正在执行: {agent.activeTask.prompt}
+                              </span>
+                            ) : agent.description ? (
+                              <span className="text-[#8792a2] text-[10px] truncate block" title={agent.description}>
+                                {agent.description}
                               </span>
                             ) : isCurrentDm ? (
                               <span className="text-indigo-400 text-[10px] font-medium">
@@ -800,6 +826,15 @@ export default function ChatHubPage() {
                         className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {/* 编辑资料 (修改名称与职责描述) */}
+                        <button
+                          onClick={() => setProfileModalTarget(agent)}
+                          className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-[#c7d1e0] transition-colors"
+                          title="编辑名称与工作职责描述"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* 换头像 */}
                         <button
                           onClick={() => setAvatarModalTarget(agent)}
@@ -871,9 +906,16 @@ export default function ChatHubPage() {
                       @{directTargetAgent.id}
                     </span>
                   </div>
-                  <span className="text-[10px] text-indigo-400 font-medium">
-                    1对1 单聊模式 (直接发送无需 @)
-                  </span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-indigo-400 font-medium">
+                      1对1 单聊
+                    </span>
+                    {directTargetAgent.description && (
+                      <span className="text-[10px] text-[#717c8d] truncate max-w-[280px]">
+                        · {directTargetAgent.description}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (

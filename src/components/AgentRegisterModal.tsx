@@ -34,6 +34,7 @@ export default function AgentRegisterModal({
 }: AgentRegisterModalProps) {
   const [agentId, setAgentId] = useState("");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [avatar, setAvatar] = useState(AVATAR_OPTIONS[0].id);
   const [token, setToken] = useState("");
   const [capabilities, setCapabilities] = useState("step_progress, artifacts_meta");
@@ -87,6 +88,7 @@ export default function AgentRegisterModal({
         body: JSON.stringify({
           id: cleanId,
           name: name.trim() || undefined,
+          description: description.trim() || undefined,
           avatar: avatar || undefined,
           token: token.trim() || undefined,
           capabilities: caps,
@@ -226,6 +228,19 @@ export default function AgentRegisterModal({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="例如 Muse 5号机 (备用)"
                   className="w-full bg-[#121418] border border-[#262a34] rounded-xl px-3 py-2 text-xs text-[#e1e5eb] placeholder-[#576070] focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#8892a2] mb-1">
+                  智能体职责描述 (工作内容与专长)
+                </label>
+                <textarea
+                  rows={2}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="例如：专职爬虫采集、自动化脚本与数据预处理"
+                  className="w-full bg-[#121418] border border-[#262a34] rounded-xl px-3 py-2 text-xs text-[#e1e5eb] placeholder-[#576070] focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                 />
               </div>
 
