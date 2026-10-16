@@ -9,19 +9,15 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (loading) return;
+  async function doSubmit(u: string, p: string) {
+    const cleanU = u.trim();
+    const cleanP = p.trim();
 
-    const formData = new FormData(e.currentTarget);
-    const inputUsername = ((formData.get("username") as string) || username || "").trim();
-    const inputPassword = ((formData.get("password") as string) || password || "").trim();
-
-    if (!inputUsername) {
+    if (!cleanU) {
       setError("请输入用户名");
       return;
     }
-    if (!inputPassword) {
+    if (!cleanP) {
       setError("请输入密码");
       return;
     }
@@ -33,13 +29,13 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: inputUsername, password: inputPassword }),
+        body: JSON.stringify({ username: cleanU, password: cleanP }),
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        window.location.href = "/";
+        window.location.replace("/");
       } else {
         setError(data.error || "账号或密码错误");
         setLoading(false);
@@ -48,6 +44,20 @@ export default function LoginPage() {
       setError("网络连接异常，请稍后重试");
       setLoading(false);
     }
+  }
+
+  function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (loading) return;
+    const formData = new FormData(e.currentTarget);
+    const u = (formData.get("username") as string) || username;
+    const p = (formData.get("password") as string) || password;
+    doSubmit(u, p);
+  }
+
+  function handleButtonClick() {
+    if (loading) return;
+    doSubmit(username, password);
   }
 
   return (
@@ -71,7 +81,7 @@ export default function LoginPage() {
 
         {/* 登录卡片 */}
         <div className="p-5 rounded-2xl bg-[#181a20]/90 border border-[#262a34] backdrop-blur-md shadow-xl">
-          <form onSubmit={handleLogin} className="space-y-3.5">
+          <form onSubmit={handleFormSubmit} className="space-y-3.5">
             {/* 用户名 */}
             <div>
               <label className="block text-[11px] font-medium text-[#7e8797] mb-1">
@@ -131,6 +141,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
+              onClick={handleButtonClick}
               className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
               <span>{loading ? "验证中..." : "登 录"}</span>
