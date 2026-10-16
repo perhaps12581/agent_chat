@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { IncomingMessage } from "http";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
+import { cacheDel, CacheKeys } from "./redis";
 
 // 消息信封通用结构 (v1.1 标准)
 export interface AgentEnvelope {
@@ -244,6 +245,15 @@ export class AgentGateway {
             },
           });
 
+          // 进度推进时让关联会话缓存失效，保证再次点击切换进该会话时立即呈现最新阶段
+          const relatedTask = await prisma.task.findUnique({
+            where: { taskId },
+            select: { conversationId: true },
+          });
+          if (relatedTask?.conversationId) {
+            await cacheDel(CacheKeys.messages(relatedTask.conversationId));
+          }
+
           this.broadcastEvent({ type: "TASK_PROGRESS", taskId, agentId: session.agentId, step, message, progress });
         }
         break;
@@ -287,6 +297,15 @@ export class AgentGateway {
               progress: 100,
             },
           });
+
+          // 任务完成后清理相关缓存与会话列表缓存
+          const relatedTask = await prisma.task.findUnique({
+            where: { taskId },
+            select: { conversationId: true },
+          });
+          if (relatedTask?.conversationId) {
+            await cacheDel(CacheKeys.messages(relatedTask.conversationId), CacheKeys.conversations);
+          }
 
           this.broadcastEvent({ type: "TASK_COMPLETE", taskId, agentId: session.agentId, status: finalStatus, result, artifacts });
         }

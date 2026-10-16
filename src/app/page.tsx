@@ -63,6 +63,8 @@ export default function ChatHubPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
+  // 前端乐观内存缓存：记录各会话已加载的消息，切会话 0 延迟立即可见，随后后台 SWR 静默同步
+  const messageCacheRef = useRef<Record<string, Message[]>>({});
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -123,8 +125,8 @@ export default function ChatHubPage() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "TASK_PROGRESS") {
-          setMessages((prev) =>
-            prev.map((msg) =>
+          setMessages((prev) => {
+            const next = prev.map((msg) =>
               msg.taskId === data.taskId
                 ? {
                     ...msg,
@@ -134,12 +136,16 @@ export default function ChatHubPage() {
                     status: "PROCESSING",
                   }
                 : msg
-            )
-          );
+            );
+            if (activeConvId) {
+              messageCacheRef.current[activeConvId] = next;
+            }
+            return next;
+          });
           fetchAgents();
         } else if (data.type === "TASK_COMPLETE") {
-          setMessages((prev) =>
-            prev.map((msg) =>
+          setMessages((prev) => {
+            const next = prev.map((msg) =>
               msg.taskId === data.taskId
                 ? {
                     ...msg,
@@ -148,8 +154,12 @@ export default function ChatHubPage() {
                     content: data.result || msg.content,
                   }
                 : msg
-            )
-          );
+            );
+            if (activeConvId) {
+              messageCacheRef.current[activeConvId] = next;
+            }
+            return next;
+          });
           fetchAgents();
         } else if (data.type === "TASK_DISPATCH" || data.type === "AGENT_STATUS_CHANGE") {
           fetchAgents();
@@ -236,8 +246,15 @@ export default function ChatHubPage() {
   }
 
   async function fetchMessages(convId: string) {
+    // 1. 如果前端内存缓存已有数据，立即呈现，实现 0 毫秒秒切无白屏/无卡顿
+    if (messageCacheRef.current[convId]) {
+      setMessages(messageCacheRef.current[convId]);
+    }
+
+    // 2. 发起后端请求 (由于后端已带 Redis 缓存，响应通常仅几毫秒)，随后平滑静默同步
     const res = await apiFetch<Message[]>(`/api/conversations/${convId}/messages`);
     if (Array.isArray(res.data)) {
+      messageCacheRef.current[convId] = res.data;
       setMessages(res.data);
     }
   }
@@ -507,8 +524,13 @@ export default function ChatHubPage() {
 
       if (res.data) {
         const { userMessage, agentMessage } = res.data;
-        if (userMessage) setMessages((prev) => [...prev, userMessage]);
-        if (agentMessage) setMessages((prev) => [...prev, agentMessage]);
+        setMessages((prev) => {
+          const next = [...prev];
+          if (userMessage) next.push(userMessage);
+          if (agentMessage) next.push(agentMessage);
+          messageCacheRef.current[activeConvId] = next;
+          return next;
+        });
       }
       fetchAgents();
     } catch (err) {

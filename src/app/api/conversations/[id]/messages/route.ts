@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { AgentGateway } from "@/lib/agent-gateway";
 import { nanoid } from "nanoid";
+import { cacheGet, cacheSet, cacheDel, CacheKeys } from "@/lib/redis";
 
 export async function GET(
   req: Request,
@@ -9,10 +10,23 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    // 1. 优先读取 Redis 缓存（毫秒级响应，杜绝切群/切单聊卡顿）
+    const cacheKey = CacheKeys.messages(id);
+    const cachedMessages = await cacheGet<unknown[]>(cacheKey);
+    if (cachedMessages) {
+      return NextResponse.json(cachedMessages);
+    }
+
+    // 2. 缓存未命中时查 Postgres
     const messages = await prisma.message.findMany({
       where: { conversationId: id },
       orderBy: { createdAt: "asc" },
     });
+
+    // 3. 写入 Redis 缓存 (300 秒，写操作/状态推进时主动失效)
+    await cacheSet(cacheKey, messages, 300);
+
     return NextResponse.json(messages);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "获取消息失败";
@@ -55,8 +69,6 @@ export async function POST(
     });
 
     // 2. 判断任务分发目标：
-    // A. 如果是单聊（targetAgentId 存在），直接派发给该 Agent，无需 @！
-    // B. 如果是群聊，检测消息中是否包含 @AgentId
     let targetAgentId: string | null = null;
     let taskPrompt = content;
 
@@ -75,6 +87,8 @@ export async function POST(
       }
     }
 
+    let agentMessage: unknown = null;
+
     if (targetAgentId) {
       // 验证是否是已知存在的 Agent
       const targetAgent = await prisma.agent.findUnique({
@@ -87,7 +101,6 @@ export async function POST(
         const timeStr = now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
         const taskId = `tsk_${timeStr}_${nanoid(6)}`;
 
-        // 仅在前端显式传递业务参数时才保留 payload，严禁注入内部 conversationId / userMessageId
         const cleanPayload =
           body.payload && typeof body.payload === "object" && Object.keys(body.payload).length > 0
             ? body.payload
@@ -107,7 +120,7 @@ export async function POST(
         });
 
         // 4. 在会话中插入 Agent 正在处理的轻量占位消息
-        const agentMessage = await prisma.message.create({
+        agentMessage = await prisma.message.create({
           data: {
             conversationId: id,
             senderType: "AGENT",
@@ -129,15 +142,16 @@ export async function POST(
           priority: body.priority || 0,
           payload: cleanPayload,
         });
-
-        return NextResponse.json({
-          userMessage,
-          agentMessage,
-        });
       }
     }
 
-    return NextResponse.json({ userMessage });
+    // 消息写入后，立即清理该会话在 Redis 的消息缓存及会话列表缓存
+    await cacheDel(CacheKeys.messages(id), CacheKeys.conversations);
+
+    return NextResponse.json({
+      userMessage,
+      agentMessage,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "发送消息失败";
     return NextResponse.json({ error: message }, { status: 500 });
