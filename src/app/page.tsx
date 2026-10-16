@@ -17,7 +17,6 @@ import {
   Copy,
   Check,
   FileText,
-  MessageSquare,
   Users,
   ImageIcon,
 } from "lucide-react";
@@ -69,10 +68,15 @@ export default function ChatHubPage() {
   const [isSending, setIsSending] = useState(false);
   const [priority, setPriority] = useState<number>(0);
 
+  // 侧边栏拖拽宽度 (默认 320px，范围 240px ~ 640px)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+  const isResizingRef = useRef(false);
+
   // 弹窗状态
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // 头像选择弹窗
   const [avatarModalTarget, setAvatarModalTarget] = useState<AgentItem | null>(null);
@@ -85,7 +89,22 @@ export default function ChatHubPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. 初始化会话与 Agent 列表与当前用户
+  // 1. 初始化持久化侧边栏宽度
+  useEffect(() => {
+    try {
+      const savedWidth = localStorage.getItem("agent_hub_sidebar_width");
+      if (savedWidth) {
+        const parsed = parseInt(savedWidth, 10);
+        if (parsed >= 240 && parsed <= 640) {
+          setSidebarWidth(parsed);
+        }
+      }
+    } catch {
+      // 忽略本地存储异常
+    }
+  }, []);
+
+  // 2. 初始化会话与 Agent 列表与当前用户
   useEffect(() => {
     fetchCurrentUser();
     fetchConversations();
@@ -95,7 +114,7 @@ export default function ChatHubPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. 监听全局 SSE 事件 (实时同步 Agent 状态与任务推进)
+  // 3. 监听全局 SSE 事件 (实时同步 Agent 状态与任务推进)
   useEffect(() => {
     const sseUrl = appConfig.apiUrl("/api/events");
     const eventSource = new EventSource(sseUrl);
@@ -145,7 +164,7 @@ export default function ChatHubPage() {
     };
   }, []);
 
-  // 3. 选中会话改变时加载历史消息
+  // 4. 选中会话改变时加载历史消息
   useEffect(() => {
     if (activeConvId) {
       fetchMessages(activeConvId);
@@ -156,6 +175,39 @@ export default function ChatHubPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // 侧边栏鼠标拖动逻辑
+  const handleStartResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const newWidth = Math.min(Math.max(event.clientX, 240), 640);
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      try {
+        setSidebarWidth((w) => {
+          localStorage.setItem("agent_hub_sidebar_width", w.toString());
+          return w;
+        });
+      } catch {
+        // 忽略异常
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   async function fetchCurrentUser() {
     const res = await apiFetch<UserInfo>("/api/auth/me");
@@ -169,7 +221,9 @@ export default function ChatHubPage() {
     if (Array.isArray(res.data) && res.data.length > 0) {
       setConversations(res.data);
       if (!activeConvId) {
-        setActiveConvId(res.data[0].id);
+        // 默认优先激活群聊
+        const defaultGroup = res.data.find((c) => c.isGroup) || res.data[0];
+        setActiveConvId(defaultGroup.id);
       }
     }
   }
@@ -254,11 +308,63 @@ export default function ChatHubPage() {
     }
   }
 
-  // 复制 Agent Token
-  function handleCopyToken(token: string, agentId: string) {
-    navigator.clipboard.writeText(token);
+  // 高兼容性安全复制 (Token + ID + WS URL 一起复制)
+  function handleCopyAgentConfig(agent: AgentItem) {
+    const wsUrl = appConfig.getWsUrl();
+    const configPayload = {
+      agent_id: agent.id,
+      ws_url: wsUrl,
+      token: agent.token || "",
+    };
+
+    // 格式化文本：包含直接可用 JSON 及按项阅读文本
+    const jsonStr = JSON.stringify(configPayload, null, 2);
+
+    let success = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard
+        .writeText(jsonStr)
+        .then(() => {
+          showCopySuccess(agent.id);
+        })
+        .catch(() => {
+          fallbackCopyText(jsonStr, agent.id);
+        });
+      return;
+    }
+
+    fallbackCopyText(jsonStr, agent.id);
+  }
+
+  function fallbackCopyText(text: string, agentId: string) {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const res = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (res) {
+        showCopySuccess(agentId);
+      } else {
+        alert("浏览器限制，请在部署配置中手动复制");
+      }
+    } catch {
+      alert("浏览器限制，请在部署配置中手动复制");
+    }
+  }
+
+  function showCopySuccess(agentId: string) {
     setCopiedTokenId(agentId);
-    setTimeout(() => setCopiedTokenId(null), 2000);
+    setCopyToast(`已复制 @${agentId} 完整参数 (ID, WS, Token)`);
+    setTimeout(() => {
+      setCopiedTokenId(null);
+      setCopyToast(null);
+    }, 2500);
   }
 
   // 输入框文本变化与 @ 检测
@@ -413,6 +519,8 @@ export default function ChatHubPage() {
     }
   }
 
+  // 会话分类：群聊与单聊
+  const groupConversations = conversations.filter((c) => c.isGroup);
   const currentConv = conversations.find((c) => c.id === activeConvId);
   const isDirectChat = currentConv ? !currentConv.isGroup && !!currentConv.targetAgentId : false;
   const directTargetAgent = isDirectChat
@@ -426,7 +534,15 @@ export default function ChatHubPage() {
     : null;
 
   return (
-    <div className="flex h-screen bg-[#14161a] text-[#e3e7ee] font-sans antialiased overflow-hidden selection:bg-indigo-500/30 selection:text-white">
+    <div className="flex h-screen bg-[#14161a] text-[#e3e7ee] font-sans antialiased overflow-hidden selection:bg-indigo-500/30 selection:text-white relative">
+      {/* 复制全局 Toast 提示 */}
+      {copyToast && (
+        <div className="fixed top-4 right-4 z-50 bg-[#1d222b] border border-indigo-500/60 text-[#e0e5ee] px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-md">
+          <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <span className="font-medium">{copyToast}</span>
+        </div>
+      )}
+
       {/* 弹窗：注册 Agent */}
       <AgentRegisterModal
         isOpen={isRegisterOpen}
@@ -454,8 +570,20 @@ export default function ChatHubPage() {
         />
       )}
 
-      {/* ================= 左侧侧边栏 (默认展示智能体集群与单聊入口) ================= */}
-      <aside className="w-80 border-r border-[#22262f] flex flex-col bg-[#101215] select-none flex-shrink-0">
+      {/* ================= 左侧侧边栏 (支持拖拽调整宽度、固定群聊、单聊列表) ================= */}
+      <aside
+        style={{ width: `${sidebarWidth}px` }}
+        className="relative border-r border-[#22262f] flex flex-col bg-[#101215] select-none flex-shrink-0 transition-[width] duration-0"
+      >
+        {/* 右边缘拖拽条 */}
+        <div
+          onMouseDown={handleStartResize}
+          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500 transition-colors z-30 group"
+          title="按住鼠标拖拽调整侧边栏宽度"
+        >
+          <div className="w-px h-full bg-transparent group-hover:bg-indigo-500/50 mx-auto" />
+        </div>
+
         {/* 顶部标题栏 */}
         <div className="h-14 px-4 border-b border-[#22262f] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -487,10 +615,10 @@ export default function ChatHubPage() {
           </div>
         </div>
 
-        {/* 会话频道切换：单聊与群聊 */}
-        <div className="px-3 py-2.5 border-b border-[#20242c] bg-[#121418]">
-          <div className="flex items-center justify-between mb-1.5 text-[11px] text-[#6d7685]">
-            <span className="font-medium uppercase tracking-wider text-[10px]">会话列表</span>
+        {/* 【固定置顶的群聊协作大厅】(无需横向滚动，永远醒目常驻) */}
+        <div className="p-3 border-b border-[#20242c] bg-[#121418]">
+          <div className="flex items-center justify-between mb-2 text-[11px] text-[#6d7685]">
+            <span className="font-medium uppercase tracking-wider text-[10px]">协作大厅 (群聊)</span>
             <button
               onClick={handleCreateGroup}
               className="hover:text-indigo-400 flex items-center gap-0.5 transition-colors text-[11px]"
@@ -501,46 +629,66 @@ export default function ChatHubPage() {
             </button>
           </div>
 
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {conversations.map((conv) => {
-              const isDirect = !conv.isGroup && !!conv.targetAgentId;
-              const directAgent = isDirect
-                ? agents.find((a) => a.id.toLowerCase() === conv.targetAgentId?.toLowerCase())
-                : null;
-              const avatar = directAgent ? getAgentAvatarUrl(directAgent.avatar, directAgent.id) : null;
-
-              return (
-                <button
-                  key={conv.id}
-                  onClick={() => setActiveConvId(conv.id)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    activeConvId === conv.id
-                      ? "bg-[#222731] text-[#e0e5ed] border border-[#333a49] shadow-sm"
-                      : "text-[#858f9f] hover:bg-[#171a20] hover:text-[#c4cbd5]"
-                  }`}
-                >
-                  {isDirect && avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatar} alt="" className="w-3.5 h-3.5 rounded object-cover" />
-                  ) : conv.isGroup ? (
-                    <Users className="w-3 h-3 text-indigo-400" />
-                  ) : (
-                    <MessageSquare className="w-3 h-3 text-emerald-400" />
-                  )}
-                  <span className="truncate max-w-[120px]">{conv.title}</span>
-                </button>
-              );
-            })}
+          <div className="space-y-1.5">
+            {groupConversations.length === 0 ? (
+              <button
+                onClick={handleCreateGroup}
+                className="w-full text-left p-2.5 rounded-xl border border-dashed border-[#2b303d] text-xs text-[#7d8797] hover:text-indigo-300 hover:border-indigo-500/40 transition-all flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>创建首个群聊频道</span>
+              </button>
+            ) : (
+              groupConversations.map((group) => {
+                const isSelected = activeConvId === group.id;
+                return (
+                  <div
+                    key={group.id}
+                    onClick={() => setActiveConvId(group.id)}
+                    className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                      isSelected
+                        ? "bg-[#202530] border-indigo-500/50 shadow-sm text-[#e2e6ed]"
+                        : "bg-[#16181e] border-[#232731] hover:border-[#313745] hover:bg-[#1a1d24] text-[#8e98a8]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                          isSelected
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "bg-[#1f232c] text-indigo-400 border border-[#2a303d]"
+                        }`}
+                      >
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-[#dce1ea] truncate flex items-center gap-1.5">
+                          <span className="truncate">{group.title}</span>
+                          {isSelected && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono flex-shrink-0">
+                              当前
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-[#6d7686] truncate mt-0.5">
+                          全体智能体集群协同 · 支持 @ 派发
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
-        {/* 主体区域：智能体节点列表 (点击直接进入单聊，带头像与悬停状态) */}
+        {/* 【智能体节点列表】(垂直向下排布，点击条目直接开单聊) */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <div className="px-3.5 py-2.5 flex items-center justify-between text-xs text-[#7f8897] border-b border-[#1c2027]">
             <span className="font-medium text-[11px] uppercase tracking-wider">
-              智能体列表 ({onlineCount}/{agents.length} 在线)
+              单聊节点 ({onlineCount}/{agents.length} 在线)
             </span>
-            <span className="text-[10px] text-[#646d7c]">点条目直接单聊</span>
+            <span className="text-[10px] text-[#646d7c]">点击条目即开单聊</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
@@ -561,12 +709,12 @@ export default function ChatHubPage() {
                     onClick={() => handleOpenDirectChat(agent)}
                     className={`p-2.5 rounded-xl border transition-all group relative cursor-pointer ${
                       isCurrentDm
-                        ? "bg-[#1c2029] border-indigo-500/40 shadow-sm"
+                        ? "bg-[#1d222b] border-indigo-500/50 shadow-sm"
                         : "bg-[#16181e] border-[#232731] hover:border-[#313745] hover:bg-[#1a1d24]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      {/* 左侧：精美形象头像与状态指示 */}
+                      {/* 左侧：形象头像与状态指示 */}
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <div className="relative flex-shrink-0">
                           <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#20252e] border border-[#2b303a] flex items-center justify-center">
@@ -591,7 +739,7 @@ export default function ChatHubPage() {
                         {/* 中间信息：名称 + ID + 悬浮工作内容 icon */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium text-[#dce1ea] truncate max-w-[105px]">
+                            <span className="text-xs font-medium text-[#dce1ea] truncate max-w-[110px]">
                               {agent.name}
                             </span>
 
@@ -609,6 +757,10 @@ export default function ChatHubPage() {
                               <span className="text-amber-400/90 truncate flex items-center gap-1 text-[10px]">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                                 正在执行: {agent.activeTask.prompt}
+                              </span>
+                            ) : isCurrentDm ? (
+                              <span className="text-indigo-400 text-[10px] font-medium">
+                                当前单聊中 · 无需 @ 直接发
                               </span>
                             ) : agent.isOnline ? (
                               <span className="text-emerald-400/80 text-[10px]">
@@ -635,20 +787,18 @@ export default function ChatHubPage() {
                           <ImageIcon className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* 复制 Token */}
-                        {agent.token && (
-                          <button
-                            onClick={() => agent.token && handleCopyToken(agent.token, agent.id)}
-                            className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-amber-300 transition-colors"
-                            title="复制接入 Token"
-                          >
-                            {copiedTokenId === agent.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
+                        {/* 复制完整连接参数 (Token + ID + WS地址) */}
+                        <button
+                          onClick={() => handleCopyAgentConfig(agent)}
+                          className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-amber-300 transition-colors"
+                          title="复制完整连接配置 (Token, ID, WS地址)"
+                        >
+                          {copiedTokenId === agent.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
 
                         {/* 注销 */}
                         <button
@@ -656,7 +806,7 @@ export default function ChatHubPage() {
                           className="p-1 rounded-md hover:bg-rose-950/40 text-[#606979] hover:text-rose-400 transition-colors"
                           title="注销"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -711,7 +861,7 @@ export default function ChatHubPage() {
                   {currentConv?.title || "协作群聊"}
                 </h2>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-[#1e222b] text-[#8690a0] border border-[#2b303c]">
-                  群聊模式
+                  群聊大厅
                 </span>
               </div>
             )}
