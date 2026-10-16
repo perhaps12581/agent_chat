@@ -951,45 +951,20 @@ export default function ChatHubPage() {
                     </span>
                   </div>
 
-                  {/* 智能体任务处理卡片 */}
+                  {/* 智能体回复与任务处理状态 */}
                   {isAgent && msg.taskId ? (
-                    <div className="w-full min-w-[320px] sm:min-w-[440px] rounded-2xl border border-[#292e39] bg-[#1a1d24]/90 p-4 space-y-3 shadow-lg">
-                      {/* 卡片头部 */}
-                      <div className="flex items-center justify-between text-xs pb-2 border-b border-[#242933]">
-                        <div className="flex items-center gap-1.5 font-mono text-[#7b8595]">
-                          <FileText className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>{msg.taskId}</span>
-                        </div>
-                        <div>
-                          {msg.status === "DONE" ? (
-                            <span className="text-emerald-400 flex items-center gap-1 text-[11px] font-medium">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> 已完成
-                            </span>
-                          ) : msg.status === "FAILED" ? (
-                            <span className="text-rose-400 flex items-center gap-1 text-[11px] font-medium">
-                              <AlertCircle className="w-3.5 h-3.5" /> 执行失败
-                            </span>
-                          ) : (
-                            <span className="text-amber-400 flex items-center gap-1.5 text-[11px] font-medium">
-                              <Clock className="w-3.5 h-3.5 animate-spin" /> 执行中...
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 步骤与进度 */}
+                    <div className="w-full min-w-[280px] sm:min-w-[420px] rounded-2xl border border-[#262b35] bg-[#1a1d24]/90 p-4 space-y-2.5 shadow-md">
+                      {/* 执行中的状态指示器 (完成后自动隐去，只留纯净内容) */}
                       {msg.status !== "DONE" && (
-                        <div className="space-y-1.5 bg-[#13151a] p-2.5 rounded-xl border border-[#232731]">
-                          <div className="flex justify-between text-[11px] text-[#8690a0]">
-                            <span className="flex items-center gap-1">
-                              <span>当前阶段:</span>
-                              <strong className="text-indigo-300 font-mono">
-                                {msg.step || "QUEUED"}
-                              </strong>
+                        <div className="space-y-2 pb-2 border-b border-[#242833]">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-amber-400 flex items-center gap-1.5 text-[11px] font-medium">
+                              <Clock className="w-3.5 h-3.5 animate-spin" />
+                              <span>正在处理: {msg.step || "QUEUED"}</span>
                             </span>
-                            <span className="font-mono text-[#d1d7e2]">{msg.progress || 10}%</span>
+                            <span className="font-mono text-xs text-[#8c96a6]">{msg.progress || 10}%</span>
                           </div>
-                          <div className="w-full bg-[#1e222a] h-1.5 rounded-full overflow-hidden">
+                          <div className="w-full bg-[#14161b] h-1.5 rounded-full overflow-hidden border border-[#22252e]">
                             <div
                               className="bg-indigo-500 h-full rounded-full transition-all duration-300"
                               style={{ width: `${msg.progress || 10}%` }}
@@ -998,10 +973,30 @@ export default function ChatHubPage() {
                         </div>
                       )}
 
-                      {/* 内容与产出 */}
-                      <div className="text-sm text-[#dce1eb] whitespace-pre-wrap leading-relaxed pt-1 select-text">
+                      {/* 失败提示 */}
+                      {msg.status === "FAILED" && (
+                        <div className="flex items-center gap-1.5 text-rose-400 text-xs pb-1 border-b border-[#242833]">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          <span>处理中断或失败</span>
+                        </div>
+                      )}
+
+                      {/* 纯净消息内容与产出 */}
+                      <div className="text-sm text-[#dce1eb] whitespace-pre-wrap leading-relaxed select-text">
                         {msg.content}
                       </div>
+
+                      {/* 完成状态微标签 */}
+                      {msg.status === "DONE" && (
+                        <div className="pt-1 flex items-center justify-between text-[10px] text-[#636c7c] border-t border-[#222630]/60">
+                          <span className="flex items-center gap-1 text-emerald-400/90 font-medium">
+                            <CheckCircle2 className="w-3 h-3" /> 处理完成
+                          </span>
+                          <span className="font-mono text-[#525a68]" title={msg.taskId}>
+                            #{msg.taskId.slice(-6)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div

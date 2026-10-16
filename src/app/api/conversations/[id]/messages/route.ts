@@ -87,6 +87,12 @@ export async function POST(
         const timeStr = now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
         const taskId = `tsk_${timeStr}_${nanoid(6)}`;
 
+        // 仅在前端显式传递业务参数时才保留 payload，严禁注入内部 conversationId / userMessageId
+        const cleanPayload =
+          body.payload && typeof body.payload === "object" && Object.keys(body.payload).length > 0
+            ? body.payload
+            : null;
+
         // 3. 创建 Task 记录
         await prisma.task.create({
           data: {
@@ -95,18 +101,19 @@ export async function POST(
             conversationId: id,
             prompt: taskPrompt,
             priority: body.priority || 0,
+            payload: cleanPayload,
             status: "PENDING",
           },
         });
 
-        // 4. 在会话中插入 Agent 正在处理的占位卡片消息
+        // 4. 在会话中插入 Agent 正在处理的轻量占位消息
         const agentMessage = await prisma.message.create({
           data: {
             conversationId: id,
             senderType: "AGENT",
             senderId: targetAgentId,
             senderName: targetAgent.name || `${targetAgentId} 助手`,
-            content: "任务已接收，正在排队处理...",
+            content: "思考中...",
             taskId,
             status: "PROCESSING",
             step: "QUEUED",
@@ -114,16 +121,13 @@ export async function POST(
           },
         });
 
-        // 5. 调用网关下发任务
+        // 5. 调用网关下发纯净任务内容
         const gateway = AgentGateway.getInstance();
         await gateway.dispatchTask(targetAgentId, {
           taskId,
           prompt: taskPrompt,
           priority: body.priority || 0,
-          payload: {
-            conversationId: id,
-            userMessageId: userMessage.id,
-          },
+          payload: cleanPayload,
         });
 
         return NextResponse.json({

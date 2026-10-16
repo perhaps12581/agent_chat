@@ -306,8 +306,9 @@ export class AgentGateway {
       return false;
     }
 
-    const payloadStr = JSON.stringify(task.payload || {});
-    const isOverSize = Buffer.byteLength(payloadStr, "utf-8") > 256 * 1024; // 256KB
+    const hasPayload = task.payload !== null && task.payload !== undefined;
+    const payloadStr = hasPayload ? JSON.stringify(task.payload) : "";
+    const isOverSize = hasPayload && Buffer.byteLength(payloadStr, "utf-8") > 256 * 1024; // 256KB
 
     let dispatchEnvelope: AgentEnvelope;
 
@@ -328,7 +329,7 @@ export class AgentGateway {
         taskId: task.taskId,
         priority: task.priority || 0,
         prompt: task.prompt,
-        payload: task.payload || {},
+        payload: hasPayload ? task.payload : null,
         ts: Date.now(),
       };
     }
