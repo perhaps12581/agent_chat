@@ -104,7 +104,7 @@ export default function AvatarPickerModal({
                 <div className="text-[11px] font-medium text-[#848e9e] uppercase tracking-wider mb-2">
                   Notion 极客极简系列
                 </div>
-                <div className="grid grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-2.5">
                   {AVATAR_OPTIONS.filter((a) => a.category === "notion").map((opt) => (
                     <AvatarCard
                       key={opt.id}
@@ -120,7 +120,7 @@ export default function AvatarPickerModal({
                 <div className="text-[11px] font-medium text-[#848e9e] uppercase tracking-wider mb-2">
                   Bottts 现代智能机器人系列
                 </div>
-                <div className="grid grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-2.5">
                   {AVATAR_OPTIONS.filter((a) => a.category === "bottts").map((opt) => (
                     <AvatarCard
                       key={opt.id}
@@ -136,7 +136,7 @@ export default function AvatarPickerModal({
                 <div className="text-[11px] font-medium text-[#848e9e] uppercase tracking-wider mb-2">
                   Google Material 几何棱镜系列
                 </div>
-                <div className="grid grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
                   {AVATAR_OPTIONS.filter((a) => a.category === "shapes").map((opt) => (
                     <AvatarCard
                       key={opt.id}

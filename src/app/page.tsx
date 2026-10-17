@@ -20,6 +20,8 @@ import {
   Users,
   ImageIcon,
   Edit3,
+  Menu,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { appConfig, apiFetch } from "@/lib/config";
@@ -75,6 +77,9 @@ export default function ChatHubPage() {
   // 侧边栏拖拽宽度 (默认 320px，范围 240px ~ 640px)
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const isResizingRef = useRef(false);
+
+  // 移动端侧边栏抽屉开关状态
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // 弹窗状态
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -266,6 +271,8 @@ export default function ChatHubPage() {
 
   // 切换或开启单聊
   async function handleOpenDirectChat(agent: AgentItem) {
+    setIsMobileSidebarOpen(false);
+
     // 检查是否已有该 Agent 的单聊
     const existing = conversations.find(
       (c) => !c.isGroup && c.targetAgentId?.toLowerCase() === agent.id.toLowerCase()
@@ -614,15 +621,27 @@ export default function ChatHubPage() {
         onSave={handleSaveProfile}
       />
 
-      {/* ================= 左侧侧边栏 (支持拖拽调整宽度、固定群聊、单聊列表) ================= */}
+      {/* 移动端全屏半透明遮罩 (点击遮罩自动收起侧边栏抽屉) */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in duration-200"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* ================= 左侧侧边栏 (移动端抽屉收起，桌面端支持拖拽) ================= */}
       <aside
-        style={{ width: `${sidebarWidth}px` }}
-        className="relative border-r border-[#22262f] flex flex-col bg-[#101215] select-none flex-shrink-0 transition-[width] duration-0"
+        style={{
+          "--sidebar-w": `${sidebarWidth}px`,
+        } as React.CSSProperties}
+        className={`fixed inset-y-0 left-0 z-50 md:static md:z-auto w-[84vw] max-w-[340px] md:max-w-none md:w-[var(--sidebar-w)] border-r border-[#22262f] flex flex-col bg-[#101215] select-none flex-shrink-0 transition-transform md:transition-none duration-250 ease-out ${
+          isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        }`}
       >
-        {/* 右边缘拖拽条 */}
+        {/* 桌面端右边缘拖拽条 */}
         <div
           onMouseDown={handleStartResize}
-          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500 transition-colors z-30 group"
+          className="hidden md:block absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500 transition-colors z-30 group"
           title="按住鼠标拖拽调整侧边栏宽度"
         >
           <div className="w-px h-full bg-transparent group-hover:bg-indigo-500/50 mx-auto" />
@@ -656,6 +675,14 @@ export default function ChatHubPage() {
             >
               <Plus className="w-4 h-4" />
             </button>
+            {/* 移动端专属收起按钮 */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="p-1.5 rounded-lg text-[#848e9f] hover:text-[#d0d6e2] hover:bg-[#1a1d23] transition-colors md:hidden ml-1"
+              title="收起侧边栏"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -688,7 +715,10 @@ export default function ChatHubPage() {
                 return (
                   <div
                     key={group.id}
-                    onClick={() => setActiveConvId(group.id)}
+                    onClick={() => {
+                      setActiveConvId(group.id);
+                      setIsMobileSidebarOpen(false);
+                    }}
                     className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
                         ? "bg-[#202530] border-indigo-500/50 shadow-sm text-[#e2e6ed]"
@@ -876,13 +906,23 @@ export default function ChatHubPage() {
       </aside>
 
       {/* ================= 右侧主对话与执行流 ================= */}
-      <main className="flex-1 flex flex-col bg-[#15171c] min-w-0">
+      <main className="flex-1 flex flex-col bg-[#15171c] min-w-0 h-full">
         {/* 顶部极简信息栏 */}
-        <header className="h-14 border-b border-[#22262f] px-5 flex items-center justify-between bg-[#15171c]/90 backdrop-blur z-10">
-          <div className="flex items-center gap-3">
+        <header className="h-14 border-b border-[#22262f] px-3 sm:px-5 flex items-center justify-between bg-[#15171c]/90 backdrop-blur z-10 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 mr-2">
+            {/* 移动端汉堡菜单按钮 (点击滑出侧边栏抽屉) */}
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="p-1.5 -ml-1 rounded-lg text-[#8690a0] hover:text-[#d3d9e4] hover:bg-[#1f232b] md:hidden flex items-center justify-center flex-shrink-0 transition-colors cursor-pointer"
+              title="展开智能体与会话列表"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
             {isDirectChat && directTargetAgent ? (
-              <div className="flex items-center gap-2.5">
-                <div className="relative">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="relative flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg overflow-hidden bg-[#20252e] border border-[#2d3340]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -897,21 +937,21 @@ export default function ChatHubPage() {
                     }`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <h2 className="font-semibold text-sm text-[#e0e4ec]">
+                    <h2 className="font-semibold text-sm text-[#e0e4ec] truncate max-w-[120px] sm:max-w-[200px]">
                       {directTargetAgent.name}
                     </h2>
-                    <span className="text-[11px] font-mono text-[#747e8e]">
+                    <span className="text-[11px] font-mono text-[#747e8e] flex-shrink-0">
                       @{directTargetAgent.id}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] text-indigo-400 font-medium">
-                      1对1 单聊
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-[#717c8d]">
+                    <span className="text-indigo-400 font-medium flex-shrink-0">
+                      单聊
                     </span>
                     {directTargetAgent.description && (
-                      <span className="text-[10px] text-[#717c8d] truncate max-w-[280px]">
+                      <span className="truncate max-w-[130px] sm:max-w-[280px]">
                         · {directTargetAgent.description}
                       </span>
                     )}
@@ -919,26 +959,28 @@ export default function ChatHubPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <h2 className="font-medium text-sm text-[#e0e4ec]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <h2 className="font-medium text-sm text-[#e0e4ec] truncate max-w-[140px] sm:max-w-none">
                   {currentConv?.title || "协作群聊"}
                 </h2>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-[#1e222b] text-[#8690a0] border border-[#2b303c]">
+                <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded bg-[#1e222b] text-[#8690a0] border border-[#2b303c] flex-shrink-0">
                   群聊大厅
                 </span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
             {currentUser && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1a1d24] border border-[#262c36] text-xs">
-                <div className="w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center text-[10px] font-semibold">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#1a1d24] border border-[#262c36] text-xs">
+                <div className="w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
                   {currentUser.username.slice(0, 1).toUpperCase()}
                 </div>
-                <span className="text-[#c8d1de] font-medium text-[11px]">{currentUser.name || currentUser.username}</span>
-                <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-950 text-indigo-300 font-mono">
+                <span className="text-[#c8d1de] font-medium text-[11px] hidden sm:inline max-w-[80px] truncate">
+                  {currentUser.name || currentUser.username}
+                </span>
+                <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-950 text-indigo-300 font-mono hidden md:inline">
                   {currentUser.role}
                 </span>
               </div>
@@ -949,17 +991,17 @@ export default function ChatHubPage() {
                 await apiFetch("/api/auth/logout", { method: "POST" });
                 window.location.href = "/login";
               }}
-              className="text-xs px-2.5 py-1.5 rounded-lg border border-[#272b35] hover:bg-[#1f232b] text-[#8690a0] hover:text-[#d3d9e4] flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="text-xs p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border border-[#272b35] hover:bg-[#1f232b] text-[#8690a0] hover:text-[#d3d9e4] flex items-center gap-1 transition-colors cursor-pointer flex-shrink-0"
               title="退出登录"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>退出</span>
+              <span className="hidden sm:inline">退出</span>
             </button>
           </div>
         </header>
 
         {/* 消息历史滚动列表 */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3.5 sm:space-y-4">
           {messages.map((msg) => {
             const isMe = msg.senderType === "USER";
             const isAgent = msg.senderType === "AGENT";
@@ -967,7 +1009,7 @@ export default function ChatHubPage() {
 
             if (isSystem) {
               return (
-                <div key={msg.id} className="flex justify-center my-3">
+                <div key={msg.id} className="flex justify-center my-2 sm:my-3">
                   <div className="text-xs text-[#6e7787] bg-[#1a1d23] px-3 py-1 rounded-full border border-[#252a34]">
                     {msg.content}
                   </div>
@@ -981,18 +1023,18 @@ export default function ChatHubPage() {
             return (
               <div
                 key={msg.id}
-                className={`flex gap-3 max-w-3xl ${isMe ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                className={`flex gap-2.5 sm:gap-3 max-w-3xl ${isMe ? "ml-auto flex-row-reverse" : "mr-auto"}`}
               >
                 {/* 头像 */}
                 <div
-                  className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden mt-0.5 ${
                     isMe
                       ? "bg-indigo-600 text-white shadow-sm"
                       : "bg-[#1f242c] border border-[#2a313d]"
                   }`}
                 >
                   {isMe ? (
-                    <User className="w-4 h-4" />
+                    <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   ) : senderAvatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={senderAvatar} alt="" className="w-full h-full object-cover" />
@@ -1004,7 +1046,7 @@ export default function ChatHubPage() {
                 </div>
 
                 {/* 消息正文区 */}
-                <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                <div className={`flex flex-col min-w-0 ${isMe ? "items-end" : "items-start"}`}>
                   <div className="text-xs text-[#717b8b] mb-1 flex items-center gap-2">
                     <span className="font-medium text-[#c0c8d4]">{msg.senderName}</span>
                     <span className="text-[10px] text-[#596270]">
@@ -1017,7 +1059,7 @@ export default function ChatHubPage() {
 
                   {/* 智能体回复与任务处理状态 */}
                   {isAgent && msg.taskId ? (
-                    <div className="w-full min-w-[280px] sm:min-w-[420px] rounded-2xl border border-[#262b35] bg-[#1a1d24]/90 p-4 space-y-2.5 shadow-md">
+                    <div className="w-full max-w-full sm:min-w-[360px] rounded-2xl border border-[#262b35] bg-[#1a1d24]/90 p-3 sm:p-4 space-y-2.5 shadow-md">
                       {/* 执行中的状态指示器 (完成后自动隐去，只留纯净内容) */}
                       {msg.status !== "DONE" && (
                         <div className="space-y-2 pb-2 border-b border-[#242833]">
@@ -1046,7 +1088,7 @@ export default function ChatHubPage() {
                       )}
 
                       {/* 纯净消息内容与产出 */}
-                      <div className="text-sm text-[#dce1eb] whitespace-pre-wrap leading-relaxed select-text">
+                      <div className="text-sm text-[#dce1eb] whitespace-pre-wrap leading-relaxed select-text break-words">
                         {msg.content}
                       </div>
 
@@ -1064,7 +1106,7 @@ export default function ChatHubPage() {
                     </div>
                   ) : (
                     <div
-                      className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl text-sm leading-relaxed max-w-[85vw] sm:max-w-2xl break-words ${
                         isMe
                           ? "bg-indigo-600 text-white rounded-tr-none shadow-sm"
                           : "bg-[#1c1f26] border border-[#272c36] text-[#dce1eb] rounded-tl-none"
@@ -1081,7 +1123,7 @@ export default function ChatHubPage() {
         </div>
 
         {/* ================= 底部输入与快捷指派区域 ================= */}
-        <div className="p-4 border-t border-[#22262f] bg-[#121417]/95 relative">
+        <div className="p-2.5 sm:p-4 border-t border-[#22262f] bg-[#121417]/95 relative flex-shrink-0">
           <div className="max-w-3xl mx-auto space-y-2 relative">
             {/* Mention 浮动下拉菜单 */}
             <MentionDropdown
@@ -1094,20 +1136,20 @@ export default function ChatHubPage() {
             />
 
             {/* 顶部指示条 */}
-            <div className="flex items-center justify-between text-xs pb-1 overflow-x-auto">
+            <div className="flex items-center justify-between text-xs pb-0.5 overflow-x-auto no-scrollbar">
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {isDirectChat && directTargetAgent ? (
-                  <span className="text-[11px] text-[#8a94a4] flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span>正与</span>
+                  <span className="text-[11px] text-[#8a94a4] flex items-center gap-1.5 truncate max-w-[220px] sm:max-w-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span>与</span>
                     <strong className="text-indigo-300">@{directTargetAgent.id}</strong>
-                    <span>单独对话，直接输入即可分派</span>
+                    <span>单聊中</span>
                   </span>
                 ) : (
                   <>
-                    <span className="text-[#646d7d] flex items-center gap-1 mr-1">
+                    <span className="text-[#646d7d] flex items-center gap-1 mr-1 flex-shrink-0">
                       <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>快捷指派:</span>
+                      <span className="hidden sm:inline">快捷指派:</span>
                     </span>
                     {agents.map((ag) => {
                       const isBusy = ag.isOnline && !!ag.activeTask;
@@ -1115,7 +1157,7 @@ export default function ChatHubPage() {
                       return (
                         <div
                           key={ag.id}
-                          className="inline-flex items-center gap-1 bg-[#1a1d24] border border-[#262c36] hover:border-[#384050] rounded-full px-2 py-0.5 transition-all text-[#c4cbd5]"
+                          className="inline-flex items-center gap-1 bg-[#1a1d24] border border-[#262c36] hover:border-[#384050] rounded-full px-2 py-0.5 transition-all text-[#c4cbd5] flex-shrink-0"
                         >
                           <button
                             type="button"
@@ -1137,7 +1179,7 @@ export default function ChatHubPage() {
               {/* 目标指示与优先级 */}
               <div className="flex items-center gap-2 flex-shrink-0 pl-2">
                 {!isDirectChat && detectedTargetAgent && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-950/80 text-indigo-300 border border-indigo-700/40 flex items-center gap-1">
+                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-950/80 text-indigo-300 border border-indigo-700/40 flex items-center gap-1 hidden sm:inline-flex">
                     <span>目标:</span>
                     <strong className="text-white">@{detectedTargetAgent.id}</strong>
                   </span>
@@ -1157,7 +1199,7 @@ export default function ChatHubPage() {
             </div>
 
             {/* 主输入框 */}
-            <div className="relative flex items-end gap-2 bg-[#1a1d24] border border-[#292f3a] rounded-2xl p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all shadow-inner">
+            <div className="relative flex items-end gap-1.5 sm:gap-2 bg-[#1a1d24] border border-[#292f3a] rounded-2xl p-1.5 sm:p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all shadow-inner">
               {!isDirectChat && (
                 <button
                   type="button"
@@ -1182,8 +1224,8 @@ export default function ChatHubPage() {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   isDirectChat
-                    ? `给 @${directTargetAgent?.id || "muse"} 发送任务或对话，按 Enter 发送...`
-                    : "输入消息，或输入 @ 快速指派特定 Muse 智能体..."
+                    ? `给 @${directTargetAgent?.id || "muse"} 发送任务，按 Enter 发送...`
+                    : "输入消息，或输入 @ 快速指派..."
                 }
                 className="flex-1 bg-transparent border-0 resize-none py-1.5 px-2 text-sm text-[#e3e7ed] placeholder-[#5d6676] focus:outline-none max-h-32 leading-relaxed"
                 style={{ minHeight: "38px" }}
@@ -1193,7 +1235,7 @@ export default function ChatHubPage() {
                 type="button"
                 onClick={() => handleSendMessage()}
                 disabled={!inputValue.trim() || isSending}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white p-2.5 rounded-xl flex items-center justify-center transition-all flex-shrink-0 shadow-sm"
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white p-2.5 rounded-xl flex items-center justify-center transition-all flex-shrink-0 shadow-sm cursor-pointer"
                 title="发送"
               >
                 <Send className="w-4 h-4" />
