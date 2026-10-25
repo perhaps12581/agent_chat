@@ -66,6 +66,7 @@ export default function ChatHubPage() {
   const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>("");
+  const activeConvIdRef = useRef<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   // 前端乐观内存缓存：记录各会话已加载的消息，切会话 0 延迟立即可见，随后后台 SWR 静默同步
   const messageCacheRef = useRef<Record<string, Message[]>>({});
@@ -134,7 +135,19 @@ export default function ChatHubPage() {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "TASK_PROGRESS") {
+        if (data.type === "NEW_MESSAGE" && data.message) {
+          const newMsg: Message = data.message;
+          const convId = data.conversationId || activeConvIdRef.current;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            const next = [...prev, newMsg];
+            if (convId && convId === activeConvIdRef.current) {
+              messageCacheRef.current[convId] = next;
+            }
+            return convId === activeConvIdRef.current ? next : prev;
+          });
+          fetchAgents();
+        } else if (data.type === "TASK_PROGRESS") {
           setMessages((prev) => {
             const next = prev.map((msg) =>
               msg.taskId === data.taskId
@@ -147,8 +160,8 @@ export default function ChatHubPage() {
                   }
                 : msg
             );
-            if (activeConvId) {
-              messageCacheRef.current[activeConvId] = next;
+            if (activeConvIdRef.current) {
+              messageCacheRef.current[activeConvIdRef.current] = next;
             }
             return next;
           });
@@ -165,8 +178,8 @@ export default function ChatHubPage() {
                   }
                 : msg
             );
-            if (activeConvId) {
-              messageCacheRef.current[activeConvId] = next;
+            if (activeConvIdRef.current) {
+              messageCacheRef.current[activeConvIdRef.current] = next;
             }
             return next;
           });
@@ -186,6 +199,7 @@ export default function ChatHubPage() {
 
   // 4. 选中会话改变时加载历史消息
   useEffect(() => {
+    activeConvIdRef.current = activeConvId;
     if (activeConvId) {
       fetchMessages(activeConvId);
     }
@@ -817,6 +831,12 @@ export default function ChatHubPage() {
                               {agent.name}
                             </span>
 
+                            {agent.id.toLowerCase() === "gemini" && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium flex-shrink-0">
+                                总控
+                              </span>
+                            )}
+
                             {/* 工作内容悬浮图标！ */}
                             <AgentStatusPopover agent={agent} side="right" />
 
@@ -875,26 +895,30 @@ export default function ChatHubPage() {
                         </button>
 
                         {/* 复制完整连接参数 (Token + ID + WS地址) */}
-                        <button
-                          onClick={() => handleCopyAgentConfig(agent)}
-                          className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-amber-300 transition-colors"
-                          title="复制完整连接配置 (Token, ID, WS地址)"
-                        >
-                          {copiedTokenId === agent.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                        {agent.id.toLowerCase() !== "gemini" && (
+                          <button
+                            onClick={() => handleCopyAgentConfig(agent)}
+                            className="p-1 rounded-md hover:bg-[#20252e] text-[#6b7585] hover:text-amber-300 transition-colors"
+                            title="复制完整连接配置 (Token, ID, WS地址)"
+                          >
+                            {copiedTokenId === agent.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
 
                         {/* 注销 */}
-                        <button
-                          onClick={() => handleDeleteAgent(agent.id, agent.name)}
-                          className="p-1 rounded-md hover:bg-rose-950/40 text-[#606979] hover:text-rose-400 transition-colors"
-                          title="注销"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {agent.id.toLowerCase() !== "gemini" && (
+                          <button
+                            onClick={() => handleDeleteAgent(agent.id, agent.name)}
+                            className="p-1 rounded-md hover:bg-rose-950/40 text-[#606979] hover:text-rose-400 transition-colors"
+                            title="注销"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

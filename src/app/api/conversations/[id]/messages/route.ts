@@ -3,6 +3,11 @@ import { prisma } from "@/lib/db";
 import { AgentGateway } from "@/lib/agent-gateway";
 import { nanoid } from "nanoid";
 import { cacheGet, cacheSet, cacheDel, CacheKeys } from "@/lib/redis";
+import {
+  GEMINI_AGENT_ID,
+  ensureGeminiAgent,
+  runGeminiOrchestrator,
+} from "@/lib/gemini-orchestrator";
 
 export async function GET(
   req: Request,
@@ -90,58 +95,97 @@ export async function POST(
     let agentMessage: unknown = null;
 
     if (targetAgentId) {
-      // 验证是否是已知存在的 Agent
-      const targetAgent = await prisma.agent.findUnique({
-        where: { id: targetAgentId },
-      });
-
-      if (targetAgent) {
-        // 生成满足单调递增规范的 taskId: tsk_YYYYMMDDHHmmss_rand
-        const now = new Date();
-        const timeStr = now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
-        const taskId = `tsk_${timeStr}_${nanoid(6)}`;
-
-        const cleanPayload =
-          body.payload && typeof body.payload === "object" && Object.keys(body.payload).length > 0
-            ? body.payload
-            : null;
-
-        // 3. 创建 Task 记录
-        await prisma.task.create({
-          data: {
-            taskId,
-            agentId: targetAgentId,
-            conversationId: id,
-            prompt: taskPrompt,
-            priority: body.priority || 0,
-            payload: cleanPayload,
-            status: "PENDING",
-          },
+      // 如果目标是内置 Gemini 总控中枢，走内置大模型统筹调度管线
+      if (targetAgentId === GEMINI_AGENT_ID) {
+        await ensureGeminiAgent();
+        const geminiAgent = await prisma.agent.findUnique({
+          where: { id: GEMINI_AGENT_ID },
         });
 
-        // 4. 在会话中插入 Agent 正在处理的轻量占位消息
-        agentMessage = await prisma.message.create({
+        const placeholder = await prisma.message.create({
           data: {
             conversationId: id,
             senderType: "AGENT",
-            senderId: targetAgentId,
-            senderName: targetAgent.name || `${targetAgentId} 助手`,
-            content: "思考中...",
-            taskId,
+            senderId: GEMINI_AGENT_ID,
+            senderName: geminiAgent?.name || "Gemini 总控中枢",
+            content: "正在分析指令并统筹调度 Muse 集群...",
             status: "PROCESSING",
-            step: "QUEUED",
-            progress: 5,
+            step: "ANALYZING",
+            progress: 15,
           },
         });
 
-        // 5. 调用网关下发纯净任务内容
-        const gateway = AgentGateway.getInstance();
-        await gateway.dispatchTask(targetAgentId, {
-          taskId,
-          prompt: taskPrompt,
-          priority: body.priority || 0,
-          payload: cleanPayload,
+        // 绑定一个虚拟 taskId 供前端卡片状态追踪
+        const updatedPlaceholder = await prisma.message.update({
+          where: { id: placeholder.id },
+          data: { taskId: `gemini_${placeholder.id}` },
         });
+
+        agentMessage = updatedPlaceholder;
+
+        // 异步启动 Gemini 总控分析与工具调用分发
+        runGeminiOrchestrator({
+          conversationId: id,
+          userPrompt: taskPrompt,
+          geminiMessageId: placeholder.id,
+          defaultPriority: body.priority || 0,
+        }).catch((err) => {
+          console.error("[runGeminiOrchestrator error]:", err);
+        });
+      } else {
+        // 验证是否是已知存在的普通 Muse Agent
+        const targetAgent = await prisma.agent.findUnique({
+          where: { id: targetAgentId },
+        });
+
+        if (targetAgent) {
+          // 生成满足单调递增规范的 taskId: tsk_YYYYMMDDHHmmss_rand
+          const now = new Date();
+          const timeStr = now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
+          const taskId = `tsk_${timeStr}_${nanoid(6)}`;
+
+          const cleanPayload =
+            body.payload && typeof body.payload === "object" && Object.keys(body.payload).length > 0
+              ? body.payload
+              : null;
+
+          // 3. 创建 Task 记录
+          await prisma.task.create({
+            data: {
+              taskId,
+              agentId: targetAgentId,
+              conversationId: id,
+              prompt: taskPrompt,
+              priority: body.priority || 0,
+              payload: cleanPayload,
+              status: "PENDING",
+            },
+          });
+
+          // 4. 在会话中插入 Agent 正在处理的轻量占位消息
+          agentMessage = await prisma.message.create({
+            data: {
+              conversationId: id,
+              senderType: "AGENT",
+              senderId: targetAgentId,
+              senderName: targetAgent.name || `${targetAgentId} 助手`,
+              content: "思考中...",
+              taskId,
+              status: "PROCESSING",
+              step: "QUEUED",
+              progress: 5,
+            },
+          });
+
+          // 5. 调用网关下发纯净任务内容
+          const gateway = AgentGateway.getInstance();
+          await gateway.dispatchTask(targetAgentId, {
+            taskId,
+            prompt: taskPrompt,
+            priority: body.priority || 0,
+            payload: cleanPayload,
+          });
+        }
       }
     }
 

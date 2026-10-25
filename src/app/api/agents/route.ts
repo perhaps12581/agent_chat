@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { AgentGateway } from "@/lib/agent-gateway";
 import { nanoid } from "nanoid";
+import { ensureGeminiAgent, GEMINI_AGENT_ID, isGeminiConfigured } from "@/lib/gemini-orchestrator";
 
 export async function GET() {
   try {
+    // 确保内置 Gemini 总控中枢已注册
+    await ensureGeminiAgent();
+
     const agents = await prisma.agent.findMany({
       orderBy: { createdAt: "asc" },
     });
     const onlineAgents = AgentGateway.getInstance().getOnlineAgents();
+    const geminiOnline = isGeminiConfigured();
 
     // 查询当前正在处理中的任务（PENDING, ACCEPTED, RUNNING）
     const activeTasks = await prisma.task.findMany({
@@ -27,39 +32,46 @@ export async function GET() {
       }
     }
 
-    const formatted = agents.map((agent) => {
-      const isOnline = onlineAgents.includes(agent.id.toLowerCase());
-      const currentTask = activeTaskMap.get(agent.id.toLowerCase()) || null;
+    const formatted = agents
+      .map((agent) => {
+        const isGemini = agent.id.toLowerCase() === GEMINI_AGENT_ID;
+        const isOnline = isGemini ? geminiOnline : onlineAgents.includes(agent.id.toLowerCase());
+        const currentTask = activeTaskMap.get(agent.id.toLowerCase()) || null;
 
-      let statusSummary = "离线待连接";
-      if (isOnline) {
-        if (currentTask) {
-          const stepStr = currentTask.lastStep ? ` [${currentTask.lastStep}]` : "";
-          const progressStr = currentTask.progress ? ` (${currentTask.progress}%)` : "";
-          statusSummary = `执行中: ${currentTask.prompt.slice(0, 36)}${stepStr}${progressStr}`;
-        } else {
-          statusSummary = "空闲就绪";
+        let statusSummary = "离线待连接";
+        if (isOnline) {
+          if (currentTask) {
+            const stepStr = currentTask.lastStep ? ` [${currentTask.lastStep}]` : "";
+            const progressStr = currentTask.progress ? ` (${currentTask.progress}%)` : "";
+            statusSummary = `执行中: ${currentTask.prompt.slice(0, 36)}${stepStr}${progressStr}`;
+          } else {
+            statusSummary = isGemini ? "总控大脑在线 · 随时调度" : "空闲就绪";
+          }
         }
-      }
 
-      return {
-        ...agent,
-        isOnline,
-        isBusy: isOnline && !!currentTask,
-        activeTask: currentTask
-          ? {
-              taskId: currentTask.taskId,
-              prompt: currentTask.prompt,
-              status: currentTask.status,
-              step: currentTask.lastStep,
-              progress: currentTask.progress,
-              priority: currentTask.priority,
-              updatedAt: currentTask.updatedAt,
-            }
-          : null,
-        statusSummary,
-      };
-    });
+        return {
+          ...agent,
+          isOnline,
+          isBusy: isOnline && !!currentTask,
+          activeTask: currentTask
+            ? {
+                taskId: currentTask.taskId,
+                prompt: currentTask.prompt,
+                status: currentTask.status,
+                step: currentTask.lastStep,
+                progress: currentTask.progress,
+                priority: currentTask.priority,
+                updatedAt: currentTask.updatedAt,
+              }
+            : null,
+          statusSummary,
+        };
+      })
+      .sort((a, b) => {
+        if (a.id.toLowerCase() === GEMINI_AGENT_ID) return -1;
+        if (b.id.toLowerCase() === GEMINI_AGENT_ID) return 1;
+        return 0;
+      });
 
     return NextResponse.json(formatted);
   } catch (error: unknown) {
