@@ -168,7 +168,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, name, description, avatar, capabilities } = body;
+    const { id, name, description, avatar, token, capabilities } = body;
 
     if (!id || typeof id !== "string") {
       return NextResponse.json({ error: "缺少 agent id" }, { status: 400 });
@@ -189,6 +189,7 @@ export async function PATCH(req: Request) {
         name: typeof name === "string" ? name.trim().slice(0, 50) : undefined,
         description: typeof description === "string" ? description.trim() : description === null ? null : undefined,
         avatar: typeof avatar === "string" ? avatar.trim() : avatar === null ? null : undefined,
+        token: typeof token === "string" && token.trim() ? token.trim() : undefined,
         capabilities: Array.isArray(capabilities) ? capabilities : undefined,
       },
     });

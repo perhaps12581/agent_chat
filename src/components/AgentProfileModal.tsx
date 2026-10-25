@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Check, Save, Sparkles, FileText, Bot } from "lucide-react";
+import { X, Save, FileText, Bot, Key } from "lucide-react";
 import { AgentItem } from "./MentionDropdown";
 import { getAgentAvatarUrl } from "@/lib/avatars";
 
@@ -9,7 +9,7 @@ interface AgentProfileModalProps {
   agent: AgentItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (agentId: string, name: string, description: string) => Promise<void>;
+  onSave: (agentId: string, name: string, description: string, token?: string) => Promise<void>;
 }
 
 export default function AgentProfileModal({
@@ -20,6 +20,7 @@ export default function AgentProfileModal({
 }: AgentProfileModalProps) {
   const [name, setName] = useState(agent?.name || "");
   const [description, setDescription] = useState(agent?.description || "");
+  const [token, setToken] = useState(agent?.token || "");
   const [saving, setSaving] = useState(false);
 
   // 当外部选中的 agent 改变时同步表单
@@ -27,6 +28,7 @@ export default function AgentProfileModal({
     if (agent) {
       setName(agent.name || "");
       setDescription(agent.description || "");
+      setToken(agent.token || "");
     }
   }, [agent]);
 
@@ -36,7 +38,7 @@ export default function AgentProfileModal({
     if (!agent) return;
     setSaving(true);
     try {
-      await onSave(agent.id, name.trim(), description.trim());
+      await onSave(agent.id, name.trim(), description.trim(), token.trim() || undefined);
       onClose();
     } finally {
       setSaving(false);
@@ -114,6 +116,23 @@ export default function AgentProfileModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="例如：专职B站短视频脚本策划、数据分发与多媒体生成..."
               className="w-full bg-[#121418] border border-[#262a34] rounded-xl p-3 text-xs text-[#e1e5eb] placeholder-[#576070] focus:outline-none focus:border-indigo-500 transition-colors resize-none leading-relaxed"
+            />
+          </div>
+
+          {/* API Key / 接入 Token 字段 */}
+          <div>
+            <label className="block font-medium text-[#8d98a8] mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span>{agent.id === "gemini" ? "大模型 API Key (sk-...)" : "节点接入 Token"}</span>
+              </span>
+            </label>
+            <input
+              type="text"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={agent.id === "gemini" ? "sk-..." : "agtk_live_..."}
+              className="w-full bg-[#121418] border border-[#262a34] rounded-xl px-3 py-2 text-xs font-mono text-amber-300 placeholder-[#576070] focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
         </div>

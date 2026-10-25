@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { nanoid } from "nanoid";
 import { prisma } from "./db";
 import { AgentGateway } from "./agent-gateway";
@@ -30,27 +32,84 @@ export interface DispatchedSubTask {
 }
 
 /**
+ * 动态读取本地 .env 文件中的配置项（解决 dev 热重载不刷新 process.env 的问题）
+ */
+function readEnvFileVar(key: string): string | undefined {
+  try {
+    const envPath = path.join(process.cwd(), ".env");
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      const match = content.match(new RegExp(`^\\s*${key}\\s*=\\s*["']?([^"'\\r\\n]+)["']?`, "m"));
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+  } catch {
+    // 忽略读取错误
+  }
+  return undefined;
+}
+
+/**
+ * 多级解析 Gemini 配置（环境变量 -> .env 文件 -> 数据库 gemini 节点 token 字段）
+ */
+export async function resolveGeminiConfig(): Promise<{
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}> {
+  const baseUrl = (
+    process.env.GEMINI_API_BASE_URL ||
+    readEnvFileVar("GEMINI_API_BASE_URL") ||
+    "http://101.43.53.182/cli-proxy/v1"
+  ).replace(/\/+$/, "");
+
+  const model =
+    process.env.GEMINI_MODEL ||
+    readEnvFileVar("GEMINI_MODEL") ||
+    "gemini-4-argon-high";
+
+  let apiKey =
+    process.env.GEMINI_API_KEY ||
+    readEnvFileVar("GEMINI_API_KEY") ||
+    "";
+
+  // 如果环境变量和 .env 都没有，从数据库 gemini 节点的 token 字段读取
+  if (!apiKey || apiKey === "internal_gemini_orchestrator_token") {
+    const dbAgent = await prisma.agent.findUnique({
+      where: { id: GEMINI_AGENT_ID },
+      select: { token: true },
+    });
+    if (dbAgent?.token && dbAgent.token !== "internal_gemini_orchestrator_token") {
+      apiKey = dbAgent.token.trim();
+    }
+  }
+
+  return { baseUrl, apiKey, model };
+}
+
+/**
  * 判断是否启用了内置 Gemini 总控模型
  */
 export function isGeminiConfigured(): boolean {
-  return !!(process.env.GEMINI_API_BASE_URL && process.env.GEMINI_API_KEY);
+  return true;
 }
 
 /**
  * 确保数据库中存在 gemini 总控节点记录
  */
 export async function ensureGeminiAgent() {
-  if (!isGeminiConfigured()) return;
+  const envKey = process.env.GEMINI_API_KEY || readEnvFileVar("GEMINI_API_KEY");
 
   await prisma.agent.upsert({
     where: { id: GEMINI_AGENT_ID },
-    update: {},
+    update: envKey ? { token: envKey, status: "ONLINE" } : { status: "ONLINE" },
     create: {
       id: GEMINI_AGENT_ID,
       name: "Gemini 总控中枢",
       description: "全局任务统筹与智能分发大脑，自动理解需求并指派给各台 Muse 设备执行",
       avatar: "bottts_alpha",
-      token: "internal_gemini_orchestrator_token",
+      token: envKey || "internal_gemini_orchestrator_token",
       status: "ONLINE",
       capabilities: ["orchestrator", "task_dispatch", "cluster_monitor"],
     },
@@ -68,9 +127,7 @@ export async function runGeminiOrchestrator(params: {
 }) {
   const { conversationId, userPrompt, geminiMessageId, defaultPriority = 0 } = params;
 
-  const baseUrl = (process.env.GEMINI_API_BASE_URL || "http://101.43.53.182/cli-proxy/v1").replace(/\/+$/, "");
-  const apiKey = process.env.GEMINI_API_KEY || "";
-  const model = process.env.GEMINI_MODEL || "gemini-4-argon-high";
+  const { baseUrl, apiKey, model } = await resolveGeminiConfig();
 
   const gateway = AgentGateway.getInstance();
 

@@ -340,11 +340,11 @@ export default function ChatHubPage() {
     fetchAgents();
   }
 
-  // 保存资料 (名称与描述)
-  async function handleSaveProfile(agentId: string, name: string, description: string) {
+  // 保存资料 (名称、描述与密钥)
+  async function handleSaveProfile(agentId: string, name: string, description: string, token?: string) {
     await apiFetch("/api/agents", {
       method: "PATCH",
-      body: JSON.stringify({ id: agentId, name, description }),
+      body: JSON.stringify({ id: agentId, name, description, token }),
     });
     fetchAgents();
   }
